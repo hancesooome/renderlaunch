@@ -1,52 +1,6 @@
-import React, {useEffect, useRef, useState} from 'react';
+import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
-import * as I from 'lucide-react';
+import {App} from './app/App';
 import './styles.css';
 
-type Layer = {id:string; name:string; icon:React.ElementType; visible:boolean; locked:boolean; color:string; start:number; duration:number};
-const initial:Layer[] = [
-  {id:'camera',name:'Camera',icon:I.Video,visible:true,locked:true,color:'#9dc6ff',start:0,duration:15},
-  {id:'phone',name:'Pro Phone',icon:I.Smartphone,visible:true,locked:false,color:'#b9a9ff',start:0,duration:15},
-  {id:'media',name:'Screen Media',icon:I.Image,visible:true,locked:false,color:'#8fbdfd',start:0,duration:15},
-  {id:'title',name:'Title',icon:I.Type,visible:true,locked:false,color:'#c0aaff',start:.55,duration:5.9},
-  {id:'background',name:'Background',icon:I.PanelTop,visible:true,locked:true,color:'#b9c4d3',start:0,duration:15},
-];
-const clamp=(n:number,a:number,b:number)=>Math.max(a,Math.min(b,n));
-const fmt=(s:number)=>`00:${String(Math.floor(s)).padStart(2,'0')}.${String(Math.round((s%1)*100)).padStart(2,'0')}`;
-
-function App(){
- const [layers,setLayers]=useState(initial),[selected,setSelected]=useState('phone'),[tool,setTool]=useState('Model');
- const [playing,setPlaying]=useState(false),[time,setTime]=useState(4.2),[zoom,setZoom]=useState(77),[saved,setSaved]=useState(true);
- const [project,setProject]=useState('Untitled Device Template'),[preset,setPreset]=useState('Flip Reveal'),[direction,setDirection]=useState('Left');
- const [intensity,setIntensity]=useState(75),[fit,setFit]=useState('Fill'),[bg,setBg]=useState('Lilac Glow'),[preview,setPreview]=useState(false);
- const [rotation,setRotation]=useState([-15,25,0]), [title,setTitle]=useState('Your app. Beautifully launched.');
- const timer=useRef<number|undefined>(undefined);
- useEffect(()=>{if(playing) timer.current=window.setInterval(()=>setTime(t=>t>=15?(setPlaying(false),0):t+1/30),33); return()=>clearInterval(timer.current)},[playing]);
- const dirty=()=>{setSaved(false);window.setTimeout(()=>setSaved(true),700)};
- const toggle=(id:string,k:'visible'|'locked')=>{setLayers(ls=>ls.map(l=>l.id===id?{...l,[k]:!l[k]}:l));dirty()};
- const current=layers.find(l=>l.id===selected) || layers[1];
- if(preview) return <div className={`preview bg-${bg.replace(' ','-').toLowerCase()}`}><button className="backPreview" onClick={()=>setPreview(false)}><I.ChevronLeft/> Back to editor</button><Phone time={time} rotation={rotation}/><div className="previewCopy"><span>INTRODUCING</span><h1>{title}</h1><p>Designed to turn product screens into polished launch stories.</p></div><div className="previewBar"><button onClick={()=>setPlaying(!playing)}>{playing?<I.Pause/>:<I.Play/>}</button><input type="range" min="0" max="15" step=".033" value={time} onChange={e=>setTime(+e.target.value)}/><b>{fmt(time)} / 00:15.00</b></div></div>;
- return <main>
-  <header><button className="icon"><I.ChevronLeft/></button><div className="project"><input value={project} onChange={e=>{setProject(e.target.value);dirty()}}/><span className={saved?'saved':'saving'}></span><small>{saved?'Saved':'Saving…'}</small></div><div className="history"><button><I.Undo2/></button><button disabled><I.Redo2/></button></div><button className="ratio">16:9 <I.ChevronDown/></button><div className="actions"><button onClick={()=>setPreview(true)}><I.Play/> Preview</button><button className="primary" onClick={()=>setSaved(true)}><I.Save/> Save Template</button></div></header>
-  <section className="editor">
-   <nav>{[['Model',I.Box],['Media',I.Image],['Text',I.Type],['Scene',I.Layers3]].map(([n,Icon]:any)=><button key={n} className={tool===n?'active':''} onClick={()=>setTool(n)}><Icon/><span>{n}</span></button>)}<button className="settings"><I.Settings/><span>Settings</span></button></nav>
-   <aside className="left"><h2>{tool==='Model'?'Layers':tool}</h2><div className="layerList">{layers.map(l=><div className={`layer ${selected===l.id?'selected':''}`} key={l.id} onClick={()=>setSelected(l.id)}><I.GripVertical className="grip"/><l.icon/><span>{l.name}</span><button onClick={e=>{e.stopPropagation();toggle(l.id,'visible')}}>{l.visible?<I.Eye/>:<I.EyeOff/>}</button><button onClick={e=>{e.stopPropagation();toggle(l.id,'locked')}}>{l.locked?<I.Lock/>:<I.Unlock/>}</button><I.MoreVertical/></div>)}</div>
-    <div className="modelCard"><div className="cardTitle"><h3>Model</h3><I.MoreHorizontal/></div><div className="asset"><div className="thumb"><Phone mini time={0} rotation={[-8,15,0]}/></div><div><b>Untitled.glb</b><small>GLB · 2.4 MB</small><span><I.CircleCheck/> Screen mapped</span></div></div><button className="replace"><I.Upload/> Replace Model</button></div>
-   </aside>
-   <div className={`workspace bg-${bg.replace(' ','-').toLowerCase()}`}><div className="canvasGlow"></div>{layers.find(l=>l.id==='phone')?.visible&&<div className={selected==='phone'?'selectionBox':''}><Phone time={time} rotation={rotation}/>{selected==='phone'&&<>{[0,1,2,3].map(i=><i className={`handle h${i}`} key={i}/>)}</>}</div>}{layers.find(l=>l.id==='title')?.visible&&<div className="canvasTitle">{title}</div>}<div className="canvasControls"><button onClick={()=>setZoom(z=>clamp(z-5,30,150))}><I.Minus/></button><b>{zoom}%</b><button onClick={()=>setZoom(z=>clamp(z+5,30,150))}><I.Plus/></button><em></em><button><I.Hand/></button><em></em><button onClick={()=>setPlaying(!playing)}>{playing?<I.Pause/>:<I.Play/>}</button><button><I.Scan/></button></div></div>
-   <aside className="inspector"><div className="inspectorHead"><h2>{current.name}</h2><I.MoreHorizontal/></div><Panel title="Transform"><label>Position</label><div className="triple">{['X','Y','Z'].map(x=><Field key={x} label={x} value="0.00"/>)}</div><label>Rotation</label><div className="triple">{rotation.map((x,i)=><Field key={i} label={['X','Y','Z'][i]} value={`${x}°`} onChange={v=>{const r=[...rotation];r[i]=parseFloat(v)||0;setRotation(r);dirty()}}/>)}</div><label>Scale</label><div className="triple">{['X','Y','Z'].map(x=><Field key={x} label={x} value="1.00"/>)}</div></Panel>
-    <Panel title="Animation"><Select label="Preset" value={preset} set={setPreset} options={['Flip Reveal','Float and Focus','Side Slide']}/><Select label="Direction" value={direction} set={setDirection} options={['Left','Right','Up','Down']}/><div className="row"><label>Duration</label><div className="input">2.0 <span>s</span></div></div><div className="row"><label>Intensity</label><input type="range" value={intensity} onChange={e=>{setIntensity(+e.target.value);dirty()}}/><div className="smallInput">{intensity} %</div></div></Panel>
-    <Panel title="Screen"><Select label="Material" value="17ProMax_Screen" set={()=>{}} options={['17ProMax_Screen','Display_Glass']}/><div className="row"><label>Fit Mode</label><div className="segments">{['Fill','Fit','Stretch'].map(x=><button className={fit===x?'on':''} onClick={()=>setFit(x)}>{x}</button>)}</div></div></Panel>
-    <Panel title="Appearance" collapsed><Select label="Background" value={bg} set={setBg} options={['Soft Blue','Lilac Glow','Midnight Studio']}/></Panel>
-   </aside>
-  </section>
-  <Timeline layers={layers.slice(0,4)} time={time} setTime={setTime} playing={playing} setPlaying={setPlaying} selected={selected} setSelected={setSelected}/>
- </main>
-}
-
-function Phone({time,rotation,mini=false}:{time:number;rotation:number[];mini?:boolean}){const p=clamp(time/2,0,1);return <div className={`phone ${mini?'mini':''}`} style={{transform:`perspective(900px) rotateX(${rotation[0]*(1-p)}deg) rotateY(${rotation[1]+(1-p)*-75}deg) rotateZ(${rotation[2]-7}deg) translateY(${(1-p)*30}px)`}}><div className="speaker"></div><div className="screen"><div className="status"><b>9:41</b><span>● ◒</span></div><div className="hello"><span>Hello, Alex</span><i></i></div><small>Welcome back</small><div className="balance"><small>Total balance</small><strong>$24,850<sup>.50</sup></strong><mark>▲ 8.5% vs last month</mark></div><div className="chart"><b>Overview</b><svg viewBox="0 0 200 85"><path d="M0 70 C20 70 18 48 35 54 S48 31 65 45 S80 60 96 31 S115 21 126 43 S145 51 151 24 S168 37 177 8 S190 12 200 0"/></svg></div><b className="cat">Top Categories</b>{['Shopping','Travel','Food & Drinks','Entertainment'].map((x,i)=><div className="category" key={x}><i style={{background:['#7c4dff','#1597ff','#20c997','#ef476f'][i]}}></i><span>{x}</span><b>${[6420,4210,3130,2450][i]}.40</b></div>)}<div className="dock"><I.Home/><I.CreditCard/><I.BarChart3/><I.User/></div></div></div>}
-function Panel({title,children,collapsed=false}:any){const [open,setOpen]=useState(!collapsed);return <section className="panel"><button className="panelTitle" onClick={()=>setOpen(!open)}><I.ChevronDown className={!open?'closed':''}/><b>{title}</b><I.ChevronUp/></button>{open&&<div className="panelBody">{children}</div>}</section>}
-function Field({label,value,onChange}:any){return <div className="field"><span>{label}</span><input value={value} onChange={e=>onChange?.(e.target.value)}/></div>}
-function Select({label,value,set,options}:any){return <div className="row"><label>{label}</label><div className="select"><select value={value} onChange={e=>set(e.target.value)}>{options.map((o:string)=><option>{o}</option>)}</select><I.ChevronDown/></div></div>}
-function Timeline({layers,time,setTime,playing,setPlaying,selected,setSelected}:any){return <footer><div className="timeHead"><button onClick={()=>setPlaying(!playing)}>{playing?<I.Pause/>:<I.Play/>}</button><b>{fmt(time)}</b><span>/ 00:15.00</span><div className="timelineTools"><button><I.Minus/></button><input type="range"/><button><I.Plus/></button><I.Scan/></div></div><div className="tracks"><div className="trackNames"></div><div className="ruler">{[0,2,4,6,8,10,12,14].map(n=><span style={{left:`${n/15*100}%`}}>00:{String(n).padStart(2,'0')}</span>)}</div><div className="playhead" style={{left:`calc(295px + ${(time/15)} * (100% - 315px))`}}><i></i></div>{layers.map((l:any)=><div className={`track ${selected===l.id?'sel':''}`} key={l.id} onClick={()=>setSelected(l.id)}><div className="trackLabel"><l.icon/><span>{l.name}</span><I.Lock/></div><div className="clipArea" onClick={e=>{const r=e.currentTarget.getBoundingClientRect();setTime(clamp((e.clientX-r.left)/r.width*15,0,15))}}><div className="clip" style={{left:`${l.start/15*100}%`,width:`${l.duration/15*100}%`,background:`linear-gradient(90deg,${l.color}55,${l.color}aa)`}}><span>{l.id==='phone'?'Flip Reveal (Left)':l.id==='media'?'Dashboard.mp4':l.id==='title'?'App Dashboard':'Camera Move'}</span>{l.id==='phone'&&<b>Idle</b>}</div></div></div>)}</div></footer>}
-createRoot(document.getElementById('root')!).render(<App/>);
+createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);

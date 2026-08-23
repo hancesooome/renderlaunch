@@ -10,11 +10,15 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
+    "dexie": "^4.4.5",
+    "immer": "^11.1.18",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
     "typescript": "latest",
-    "vite": "latest"
+    "vite": "latest",
+    "zod": "^4.4.3",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@types/react": "^19.2.18",
