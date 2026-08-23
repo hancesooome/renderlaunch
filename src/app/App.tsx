@@ -1323,21 +1323,24 @@ function Preview({
   onClose: () => void;
 }) {
   return (
-    <div
-      className={`preview ${bgClass(project.background.preset)}`}
-      style={backgroundStyle(project)}
-    >
+    <div className="preview">
       <button className="backPreview" onClick={onClose}>
         <I.ChevronLeft /> Back to editor
       </button>
-      {project.model?.assetId ? (
-        <div className="previewModel">
-          <SceneCanvas project={project} frame={frame} autoFrame={false} />
-        </div>
-      ) : (
-        <Phone frame={frame} project={project} />
-      )}
-      <PreviewOverlays project={project} frame={frame} />
+      <div
+        className={`previewStage ${bgClass(project.background.preset)}`}
+        style={backgroundStyle(project)}
+      >
+        <div className="canvasGlow" />
+        {project.model?.assetId ? (
+          <div className="previewModel">
+            <SceneCanvas project={project} frame={frame} autoFrame={false} />
+          </div>
+        ) : (
+          <Phone frame={frame} project={project} />
+        )}
+        <PreviewOverlays project={project} frame={frame} />
+      </div>
       <div className="previewBar">
         <button onClick={() => onPlay(!playing)}>
           {playing ? <I.Pause /> : <I.Play />}

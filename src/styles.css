@@ -9,3 +9,10 @@
 .tracks{height:200px;overflow-y:auto}
 .previewOverlays .overlayItem{pointer-events:none}.previewBar,.backPreview{z-index:4}
 .timelineSurface{position:relative;min-width:100%;height:max-content}.timelineSurface .trackLabel{position:sticky;left:0;background:#fff;z-index:3}.timelineSurface .ruler{cursor:ew-resize;touch-action:none}.clip{cursor:grab;touch-action:none;user-select:none}.clip:active{cursor:grabbing}.clipHandle{position:absolute;top:0;bottom:0;width:8px;background:#087ef5;opacity:0;z-index:2}.clip:hover .clipHandle,.clip.sel .clipHandle{opacity:.55}.clipHandle.left{left:0;cursor:ew-resize}.clipHandle.right{right:0;cursor:ew-resize}.timelineTools b{font-size:10px;color:#6e6e73;min-width:34px}.timeHead>button:nth-child(2){width:38px}
+
+/* Shared composition viewport: camera and overlays keep identical framing. */
+.workspace{width:calc(100% - 28px);max-width:calc(177.7778vh - 650.6667px);height:auto;aspect-ratio:16 / 9;margin:0;place-self:center}
+.preview{background:#f5f5f7;padding-bottom:90px}
+.previewStage{position:relative;width:calc(100% - 32px);max-width:calc(177.7778vh - 320px);aspect-ratio:16 / 9;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:15px;isolation:isolate}
+.previewModel{position:absolute;inset:0;width:auto;height:auto}
+.previewModel .threeCanvas{position:absolute;inset:0}
