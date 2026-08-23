@@ -26,7 +26,14 @@ export const projectSchema = z.object({
     durationInFrames: z.union([z.literal(300), z.literal(450)]),
   }),
   model: z.object({
+    assetId: z.string().optional(),
     fileName: z.string(),
+    fileSize: z.number().nonnegative().optional(),
+    stats: z.object({
+      nodes: z.number().int().nonnegative(), meshes: z.number().int().nonnegative(),
+      materials: z.number().int().nonnegative(), animations: z.number().int().nonnegative(),
+      triangles: z.number().int().nonnegative(), materialNames: z.array(z.string()),
+    }).optional(),
     position: vector3,
     rotation: vector3,
     scale: z.number().positive(),

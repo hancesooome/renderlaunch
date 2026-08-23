@@ -9,12 +9,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
     "@vitejs/plugin-react": "latest",
     "dexie": "^4.4.5",
     "immer": "^11.1.18",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "three": "^0.185.1",
     "typescript": "latest",
     "vite": "latest",
     "zod": "^4.4.3",
@@ -22,6 +25,7 @@
   },
   "devDependencies": {
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4"
+    "@types/react-dom": "^19.2.4",
+    "@types/three": "^0.185.4"
   }
 }
