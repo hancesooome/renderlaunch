@@ -7,6 +7,7 @@ import {clamp} from '../animation/frame';
 
 type SaveStatus = 'loading' | 'saved' | 'unsaved' | 'saving' | 'error';
 type ProjectRecipe = (draft: TemplateProject) => void;
+export type TransformMode = 'translate' | 'rotate' | 'scale';
 
 type EditorState = {
   project: TemplateProject;
@@ -16,6 +17,7 @@ type EditorState = {
   activeTool: string;
   zoom: number;
   preview: boolean;
+  transformMode: TransformMode;
   hydrated: boolean;
   saveStatus: SaveStatus;
   past: TemplateProject[];
@@ -29,6 +31,7 @@ type EditorState = {
   setActiveTool: (tool: string) => void;
   setZoom: (zoom: number) => void;
   setPreview: (preview: boolean) => void;
+  setTransformMode: (mode: TransformMode) => void;
   undo: () => void;
   redo: () => void;
   persist: () => Promise<void>;
@@ -36,7 +39,7 @@ type EditorState = {
 
 export const useEditorStore = create<EditorState>((set, get) => ({
   project: createDefaultProject(), currentFrame: 126, playing: false, selectedLayerId: 'phone', activeTool: 'Model', zoom: 77,
-  preview: false, hydrated: false, saveStatus: 'loading', past: [], future: [],
+  preview: false, transformMode: 'translate', hydrated: false, saveStatus: 'loading', past: [], future: [],
   hydrate: async () => {
     try {
       const restored = await loadRecentProject();
@@ -53,7 +56,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     return next >= state.project.canvas.durationInFrames ? {currentFrame: 0, playing: false} : {currentFrame: next};
   }),
   setPlaying: playing => set({playing}), setSelectedLayer: selectedLayerId => set({selectedLayerId}),
-  setActiveTool: activeTool => set({activeTool}), setZoom: zoom => set({zoom: clamp(zoom, 30, 150)}), setPreview: preview => set({preview}),
+  setActiveTool: activeTool => set({activeTool}), setZoom: zoom => set({zoom: clamp(zoom, 30, 150)}), setPreview: preview => set({preview}), setTransformMode: transformMode => set({transformMode}),
   undo: () => set(state => {
     const previous = state.past[state.past.length - 1]; if (!previous) return state;
     return {project: previous, past: state.past.slice(0, -1), future: [state.project, ...state.future], saveStatus: 'unsaved'};

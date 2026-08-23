@@ -39,7 +39,12 @@ export const projectSchema = z.object({
     scale: z.number().positive(),
     pivot: vector3,
     frontAxis: z.enum(['+X', '-X', '+Y', '-Y', '+Z', '-Z']),
+    defaultTransform: z.object({position: vector3, rotation: vector3, scale: z.number().positive(), pivot: vector3, frontAxis: z.enum(['+X', '-X', '+Y', '-Y', '+Z', '-Z'])}).optional(),
   }).nullable(),
+  camera: z.object({
+    position: vector3, target: vector3, fov: z.number().min(10).max(100),
+    defaultPosition: vector3, defaultTarget: vector3,
+  }).optional(),
   screen: z.object({
     materialName: z.string(),
     fit: z.enum(['fill', 'fit', 'stretch']),
