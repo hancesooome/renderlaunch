@@ -16,11 +16,12 @@ type Props={project:TemplateProject;frame:number;editable?:boolean;mode?:Transfo
 export function SceneCanvas({project,frame,editable=false,mode='translate',frameRequest=0,onTransform,onCamera}:Props){
  const asset=useAssetUrl(project.model?.assetId),screenAsset=useAssetUrl(project.screen?.mediaAssetId),url=asset.url,[bounds,setBounds]=useState<NormalizedBounds>();
  const camera=project.camera??{position:[0,0.6,4] as [number,number,number],target:[0,0,0] as [number,number,number],fov:35};
+ const lightingVisible=project.layers.find(layer=>layer.type==='lighting')?.visible??true;
  useEffect(()=>setBounds(undefined),[url]);
  if(!url)return <div className="sceneStatus">{asset.status==='loading'?<><span className="sceneSpinner"/>Preparing model…</>:<><strong>Model asset unavailable</strong><small>Use Replace Model to attach the GLB again.</small></>}</div>;
  return <div className="threeCanvas"><Canvas shadows dpr={[1,2]} camera={{position:camera.position,fov:camera.fov}} gl={{antialias:true,preserveDrawingBuffer:true}}>
-  <ambientLight intensity={1.2}/><directionalLight castShadow position={[3,5,4]} intensity={2.4}/>
-  <Suspense fallback={null}><LoadedModel url={url} screenUrl={screenAsset.url} project={project} frame={frame} editable={editable} mode={mode} onTransform={onTransform} onBounds={setBounds}/><Environment preset="studio"/><ContactShadows position={[0,0,0]} opacity={.3} scale={10} blur={2.5}/></Suspense>
+  <ambientLight intensity={lightingVisible?project.lighting.fillIntensity:0}/><directionalLight castShadow color={project.lighting.keyColor} position={project.lighting.keyPosition} intensity={lightingVisible?project.lighting.keyIntensity:0}/>
+  <Suspense fallback={null}><LoadedModel url={url} screenUrl={screenAsset.url} project={project} frame={frame} editable={editable} mode={mode} onTransform={onTransform} onBounds={setBounds}/>{lightingVisible&&<><Environment preset="studio" environmentIntensity={project.lighting.environmentIntensity}/><ContactShadows position={[0,0,0]} opacity={project.lighting.shadowOpacity} scale={10} blur={project.lighting.shadowSoftness}/></>}</Suspense>
   <CameraController project={project} bounds={bounds} frameRequest={frameRequest} onCamera={onCamera}/>
  </Canvas></div>
 }

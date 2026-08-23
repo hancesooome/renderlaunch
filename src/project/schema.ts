@@ -13,6 +13,9 @@ export const layerSchema = z.object({
   zIndex: z.number().int(),
   color: z.string(),
   content: z.string().optional(),
+  transform2D: z.object({x:z.number(),y:z.number(),width:z.number().positive(),height:z.number().positive(),rotation:z.number(),opacity:z.number().min(0).max(1)}).default({x:120,y:110,width:420,height:120,rotation:0,opacity:1}),
+  textStyle: z.object({fontFamily:z.string(),fontWeight:z.number(),fontSize:z.number().positive(),color:z.string(),align:z.enum(['left','center','right']),lineHeight:z.number().positive(),letterSpacing:z.number()}).default({fontFamily:'Inter',fontWeight:700,fontSize:48,color:'#152144',align:'left',lineHeight:1.05,letterSpacing:-1}),
+  media: z.object({assetId:z.string(),fileName:z.string(),type:z.literal('image')}).optional(),
 });
 
 export const projectSchema = z.object({
@@ -45,6 +48,7 @@ export const projectSchema = z.object({
     position: vector3, target: vector3, fov: z.number().min(10).max(100),
     defaultPosition: vector3, defaultTarget: vector3,
   }).optional(),
+  lighting: z.object({preset:z.enum(['Soft Studio','Bright Product','Dark Cinematic']),environmentIntensity:z.number().min(0).max(5),keyColor:z.string(),keyIntensity:z.number().min(0).max(10),keyPosition:vector3,fillIntensity:z.number().min(0).max(5),shadowOpacity:z.number().min(0).max(1),shadowSoftness:z.number().min(0).max(10)}).default({preset:'Soft Studio',environmentIntensity:1.2,keyColor:'#ffffff',keyIntensity:2.4,keyPosition:[3,5,4],fillIntensity:1.2,shadowOpacity:.3,shadowSoftness:2.5}),
   screen: z.object({
     mode: z.enum(['material', 'plane']).default('material'),
     materialName: z.string(),
@@ -68,7 +72,7 @@ export const projectSchema = z.object({
     durationInFrames: z.number().int().positive(),
     intensity: z.number().min(0).max(100),
   }),
-  background: z.object({preset: z.enum(['Soft Blue', 'Lilac Glow', 'Midnight Studio'])}),
+  background: z.object({preset: z.enum(['Soft Blue', 'Lilac Glow', 'Midnight Studio']),type:z.enum(['solid','gradient']).default('gradient'),colorA:z.string().default('#d9e8ff'),colorB:z.string().default('#f0d9ec'),angle:z.number().default(135)}),
   layers: z.array(layerSchema),
   createdAt: z.string(),
   updatedAt: z.string(),

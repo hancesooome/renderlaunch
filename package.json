@@ -17,6 +17,7 @@
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "react-moveable": "^0.56.0",
     "three": "^0.185.1",
     "typescript": "latest",
     "vite": "latest",

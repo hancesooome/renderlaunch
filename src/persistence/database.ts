@@ -25,7 +25,9 @@ export async function loadRecentProject(): Promise<TemplateProject | null> {
   if (!stored) return null;
   const {savedAt: _savedAt, ...project} = stored;
   const result = projectSchema.safeParse(project);
-  return result.success ? result.data : null;
+  if(!result.success)return null;
+  if(!result.data.layers.some(layer=>layer.type==='lighting'))result.data.layers.splice(1,0,{id:'lighting',type:'lighting',name:'Lighting',startFrame:0,durationInFrames:result.data.canvas.durationInFrames,visible:true,locked:true,zIndex:0,color:'#ffd38f',transform2D:{x:0,y:0,width:100,height:100,rotation:0,opacity:1},textStyle:{fontFamily:'Inter',fontWeight:500,fontSize:24,color:'#ffffff',align:'left',lineHeight:1.2,letterSpacing:0}});
+  return result.data;
 }
 
 export async function saveAsset(file: File) {
