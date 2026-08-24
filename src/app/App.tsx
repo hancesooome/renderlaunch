@@ -164,6 +164,31 @@ export function App() {
     window.addEventListener("keydown", togglePlayback);
     return () => window.removeEventListener("keydown", togglePlayback);
   }, []);
+  useEffect(() => {
+    const historyShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      )
+        return;
+      const key = event.key.toLowerCase(),
+        state = useEditorStore.getState();
+      if (key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) state.redo();
+        else state.undo();
+      } else if (key === "y") {
+        event.preventDefault();
+        state.redo();
+      }
+    };
+    window.addEventListener("keydown", historyShortcut);
+    return () => window.removeEventListener("keydown", historyShortcut);
+  }, []);
   const resizeTimeline = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const handle = event.currentTarget,
@@ -1454,10 +1479,24 @@ function Timeline({
   };
   useEffect(() => {
     const remove = (event: KeyboardEvent) => {
-      if (event.key !== "Delete" && event.key !== "Backspace") return;
       const target = event.target as HTMLElement | null;
       if (target?.matches("input, textarea, select, [contenteditable=true]"))
         return;
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "a"
+      ) {
+        const all = project.keyframeTracks.flatMap((track) =>
+          track.keyframes.map((keyframe) => ({
+            trackId: track.id,
+            keyframeId: keyframe.id,
+          })),
+        );
+        event.preventDefault();
+        setSelectedKeyframes(all);
+        return;
+      }
+      if (event.key !== "Delete" && event.key !== "Backspace") return;
       if (!selectedKeyframes.length) return;
       event.preventDefault();
       deleteSelectedKeyframes();
