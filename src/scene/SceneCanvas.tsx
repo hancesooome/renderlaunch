@@ -36,7 +36,6 @@ import { clone } from "three/examples/jsm/utils/SkeletonUtils.js";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { TemplateProject } from "../project/schema";
 import type { TransformMode } from "../store/editorStore";
-import { evaluateDeviceFrame } from "../animation/presets";
 import {
   evaluateColorProperty,
   evaluateNumericProperty,
@@ -409,7 +408,6 @@ function LoadedModel({
       window.removeEventListener("pointercancel", finishTransform);
     };
   });
-  const animation = evaluateDeviceFrame(project, frame);
   const deviceId =
       project.layers.find((layer) => layer.type === "device")?.id ?? "phone",
     animatedPosition = model.position.map((value, index) =>
@@ -449,11 +447,7 @@ function LoadedModel({
       }
       scale={animatedScale}
     >
-      <group
-        position={[pivot[0] + animation.x, pivot[1] + animation.y, pivot[2]]}
-        rotation={[0, animation.rotationY, 0]}
-        scale={animation.scale}
-      >
+      <group position={pivot}>
         <group
           position={[-pivot[0], -pivot[1], -pivot[2]]}
           rotation={frontRotation(model.frontAxis)}

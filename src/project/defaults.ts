@@ -72,13 +72,6 @@ export function createDefaultProject(): TemplateProject {
       planeRotation: [0, 0, 0],
       planeSize: [0.9, 1.8],
     },
-    animation: {
-      preset: "Flip Reveal",
-      direction: "Left",
-      durationInFrames: 60,
-      intensity: 75,
-      easing: "ease-out",
-    },
     background: {
       preset: "Lilac Glow",
       type: "gradient",
@@ -152,11 +145,6 @@ export function createDefaultProject(): TemplateProject {
         zIndex: 3,
         color: "#c0aaff",
         content: "Your app. Beautifully launched.",
-        entrance: {
-          preset: "Fade Up",
-          durationInFrames: 20,
-          easing: "ease-out",
-        },
       },
       {
         ...layerDefaults,

@@ -155,32 +155,6 @@ export const layerSchema = z.object({
       type: z.literal("image"),
     })
     .optional(),
-  entrance: z
-    .object({
-      preset: z.enum([
-        "Fade Up",
-        "Slide In",
-        "Blur Reveal",
-        "Scale Pop",
-        "Rotate Reveal",
-      ]),
-      durationInFrames: z.number().int().positive(),
-      easing: z.enum(["linear", "ease-in", "ease-out", "ease-in-out"]),
-    })
-    .optional(),
-  exit: z
-    .object({
-      preset: z.enum([
-        "Fade Up",
-        "Slide In",
-        "Blur Reveal",
-        "Scale Pop",
-        "Rotate Reveal",
-      ]),
-      durationInFrames: z.number().int().positive(),
-      easing: z.enum(["linear", "ease-in", "ease-out", "ease-in-out"]),
-    })
-    .optional(),
 });
 
 export const projectSchema = z.object({
@@ -276,15 +250,6 @@ export const projectSchema = z.object({
         .default([0.9, 1.8]),
     })
     .nullable(),
-  animation: z.object({
-    preset: z.enum(["Flip Reveal", "Float and Focus", "Side Slide"]),
-    direction: z.enum(["Left", "Right", "Up", "Down"]),
-    durationInFrames: z.number().int().positive(),
-    intensity: z.number().min(0).max(100),
-    easing: z
-      .enum(["linear", "ease-in", "ease-out", "ease-in-out"])
-      .default("ease-out"),
-  }),
   background: z.object({
     preset: z.enum(["Soft Blue", "Lilac Glow", "Midnight Studio"]),
     type: z.enum(["solid", "gradient"]).default("gradient"),

@@ -9,8 +9,7 @@ import {
 import * as I from "lucide-react";
 import Moveable from "react-moveable";
 import type { LucideIcon } from "lucide-react";
-import { clamp, easeOutCubic, formatTimecode } from "../animation/frame";
-import { evaluateOverlayFrame } from "../animation/presets";
+import { clamp, formatTimecode } from "../animation/frame";
 import {
   createColorTrack,
   createNumericTrack,
@@ -691,46 +690,6 @@ function Inspector({
           </button>
         </div>
       </Panel>
-      <Panel title="Preset Timing">
-        <div className="triple">
-          <Field
-            label="Start"
-            value={
-              project.layers.find((item) => item.type === "device")
-                ?.startFrame ?? 0
-            }
-            onChange={(value) =>
-              update((d) => {
-                const item = d.layers.find((entry) => entry.type === "device");
-                if (item)
-                  item.startFrame = Math.round(
-                    clamp(value, 0, d.canvas.durationInFrames - 1),
-                  );
-              })
-            }
-          />
-          <Field
-            label="Frames"
-            value={project.animation.durationInFrames}
-            onChange={(value) =>
-              update((d) => {
-                d.animation.durationInFrames = Math.max(1, Math.round(value));
-              })
-            }
-          />
-        </div>
-        <Select
-          label="Easing"
-          value={project.animation.easing}
-          options={["linear", "ease-in", "ease-out", "ease-in-out"]}
-          onChange={(value) =>
-            update((d) => {
-              d.animation.easing =
-                value as TemplateProject["animation"]["easing"];
-            })
-          }
-        />
-      </Panel>
       <Panel title="Transform">
         <label>Position</label>
         <div className="triple">
@@ -774,52 +733,6 @@ function Inspector({
               })
             }
           />
-        </div>
-      </Panel>
-      <Panel title="Animation">
-        <Select
-          label="Preset"
-          value={project.animation.preset}
-          options={["Flip Reveal", "Float and Focus", "Side Slide"]}
-          onChange={(value) =>
-            update((d) => {
-              d.animation.preset =
-                value as TemplateProject["animation"]["preset"];
-            })
-          }
-        />
-        <Select
-          label="Direction"
-          value={project.animation.direction}
-          options={["Left", "Right", "Up", "Down"]}
-          onChange={(value) =>
-            update((d) => {
-              d.animation.direction =
-                value as TemplateProject["animation"]["direction"];
-            })
-          }
-        />
-        <div className="row">
-          <label>Duration</label>
-          <div className="input">
-            {(project.animation.durationInFrames / project.canvas.fps).toFixed(
-              1,
-            )}{" "}
-            <span>s</span>
-          </div>
-        </div>
-        <div className="row">
-          <label>Intensity</label>
-          <input
-            type="range"
-            value={project.animation.intensity}
-            onChange={(e) =>
-              update((d) => {
-                d.animation.intensity = Number(e.target.value);
-              })
-            }
-          />
-          <div className="smallInput">{project.animation.intensity} %</div>
         </div>
       </Panel>
       <Panel title="Screen">
@@ -1162,7 +1075,6 @@ function Inspector({
 }
 
 function Phone({
-  frame,
   project,
   mini = false,
 }: {
@@ -1170,22 +1082,12 @@ function Phone({
   project: TemplateProject;
   mini?: boolean;
 }) {
-  const rotation = project.model?.rotation ?? [0, 0, 0],
-    progress = easeOutCubic(frame / project.animation.durationInFrames),
-    direction = project.animation.direction === "Right" ? 1 : -1,
-    reveal =
-      project.animation.preset === "Flip Reveal"
-        ? (direction * (1 - progress) * 75 * project.animation.intensity) / 100
-        : 0,
-    rise =
-      project.animation.preset === "Float and Focus"
-        ? (1 - progress) * 60
-        : (1 - progress) * 25;
+  const rotation = project.model?.rotation ?? [0, 0, 0];
   return (
     <div
       className={`phone ${mini ? "mini" : ""}`}
       style={{
-        transform: `perspective(900px) rotateX(${rotation[0]}deg) rotateY(${rotation[1] + reveal}deg) rotateZ(${rotation[2] - 7}deg) translateY(${rise}px) scale(${project.model?.scale ?? 1})`,
+        transform: `perspective(900px) rotateX(${rotation[0]}deg) rotateY(${rotation[1]}deg) rotateZ(${rotation[2] - 7}deg) scale(${project.model?.scale ?? 1})`,
       }}
     >
       <div className="speaker" />
@@ -1776,7 +1678,7 @@ function TimelineTrack({
   };
   const label =
     layer.type === "device"
-      ? `${project.animation.preset} (${project.animation.direction})`
+      ? "Manual keyframes"
       : layer.type === "screen-media"
         ? "Screen media"
         : layer.type === "text"
@@ -3371,8 +3273,7 @@ function OverlayItem({
         frame,
         layer.textStyle.color,
       ),
-    },
-    animation = evaluateOverlayFrame(layer, frame);
+    };
   return (
     <div
       data-overlay-id={layer.id}
@@ -3386,9 +3287,8 @@ function OverlayItem({
         top: transform.y * scale,
         width: transform.width * scale,
         height: transform.height * scale,
-        opacity: transform.opacity * animation.opacity,
-        transform: `translate(${animation.x * scale}px,${animation.y * scale}px) rotate(${transform.rotation + animation.rotation}deg) scale(${animation.scale})`,
-        filter: `blur(${animation.blur * scale}px)`,
+        opacity: transform.opacity,
+        transform: `rotate(${transform.rotation}deg)`,
         zIndex: layer.zIndex,
         fontFamily: style.fontFamily,
         fontWeight: style.fontWeight,
@@ -3909,25 +3809,7 @@ function OverlayInspectorV2({
         if (item) recipe(item);
       }),
     style = layer.textStyle,
-    transform = layer.transform2D,
-    animationOptions = [
-      "None",
-      "Fade Up",
-      "Slide In",
-      "Blur Reveal",
-      "Scale Pop",
-      "Rotate Reveal",
-    ];
-  const setAnimation = (kind: "entrance" | "exit", value: string) =>
-    mutate((item) => {
-      if (value === "None") delete item[kind];
-      else
-        item[kind] = {
-          preset: value as NonNullable<ProjectLayer["entrance"]>["preset"],
-          durationInFrames: item[kind]?.durationInFrames ?? 20,
-          easing: item[kind]?.easing ?? "ease-out",
-        };
-    });
+    transform = layer.transform2D;
   return (
     <aside className="inspector">
       <div className="inspectorHead">
@@ -4123,86 +4005,6 @@ function OverlayInspectorV2({
             }
           />
         </div>
-      </Panel>
-      <Panel title="Animation">
-        <Select
-          label="Entrance"
-          value={layer.entrance?.preset ?? "None"}
-          options={animationOptions}
-          onChange={(value) => setAnimation("entrance", value)}
-        />
-        {layer.entrance && (
-          <>
-            <div className="triple">
-              <Field
-                label="Frames"
-                value={layer.entrance.durationInFrames}
-                onChange={(value) =>
-                  mutate((item) => {
-                    if (item.entrance)
-                      item.entrance.durationInFrames = clamp(
-                        Math.round(value),
-                        1,
-                        item.durationInFrames,
-                      );
-                  })
-                }
-              />
-            </div>
-            <Select
-              label="Easing"
-              value={layer.entrance.easing}
-              options={["linear", "ease-in", "ease-out", "ease-in-out"]}
-              onChange={(value) =>
-                mutate((item) => {
-                  if (item.entrance)
-                    item.entrance.easing = value as NonNullable<
-                      ProjectLayer["entrance"]
-                    >["easing"];
-                })
-              }
-            />
-          </>
-        )}
-        <Select
-          label="Exit"
-          value={layer.exit?.preset ?? "None"}
-          options={animationOptions}
-          onChange={(value) => setAnimation("exit", value)}
-        />
-        {layer.exit && (
-          <>
-            <div className="triple">
-              <Field
-                label="Frames"
-                value={layer.exit.durationInFrames}
-                onChange={(value) =>
-                  mutate((item) => {
-                    if (item.exit)
-                      item.exit.durationInFrames = clamp(
-                        Math.round(value),
-                        1,
-                        item.durationInFrames,
-                      );
-                  })
-                }
-              />
-            </div>
-            <Select
-              label="Easing"
-              value={layer.exit.easing}
-              options={["linear", "ease-in", "ease-out", "ease-in-out"]}
-              onChange={(value) =>
-                mutate((item) => {
-                  if (item.exit)
-                    item.exit.easing = value as NonNullable<
-                      ProjectLayer["exit"]
-                    >["easing"];
-                })
-              }
-            />
-          </>
-        )}
       </Panel>
       <Panel title="Layer">
         <div className="layerActions">
@@ -4702,7 +4504,6 @@ function createOverlayLayer(
       lineHeight: 1.05,
       letterSpacing: -1,
     },
-    entrance: { preset: "Fade Up", durationInFrames: 20, easing: "ease-out" },
   };
 }
 async function validateMedia(file: File): Promise<"image" | "video"> {
