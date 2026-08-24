@@ -54,6 +54,7 @@ type Props = {
   autoFrame?: boolean;
   cameraControls?: boolean;
   onReady?: () => void;
+  onMediaFrameReady?: (frame: number) => void;
   onTransform?: (value: TransformValue) => void;
   onCamera?: (
     position: [number, number, number],
@@ -71,6 +72,7 @@ export function SceneCanvas({
   autoFrame = false,
   cameraControls = true,
   onReady,
+  onMediaFrameReady,
   onTransform,
   onCamera,
 }: Props) {
@@ -130,6 +132,7 @@ export function SceneCanvas({
             onTransform={onTransform}
             onBounds={setBounds}
             onReady={onReady}
+            onMediaFrameReady={onMediaFrameReady}
           />
           {lightingVisible && (
             <>
@@ -169,6 +172,7 @@ function LoadedModel({
   onTransform,
   onBounds,
   onReady,
+  onMediaFrameReady,
 }: {
   url: string;
   screenUrl?: string;
@@ -179,6 +183,7 @@ function LoadedModel({
   onTransform?: Props["onTransform"];
   onBounds: (bounds: NormalizedBounds) => void;
   onReady?: Props["onReady"];
+  onMediaFrameReady?: Props["onMediaFrameReady"];
 }) {
   const gltf = useGLTF(url),
     scene = useMemo(() => {
@@ -206,7 +211,12 @@ function LoadedModel({
     dragging = useRef(false),
     pendingTransform = useRef<TransformValue | undefined>(undefined),
     model = project.model!;
-  const screenTexture = useScreenTexture(project, screenUrl, frame),
+  const screenTexture = useScreenTexture(
+      project,
+      screenUrl,
+      frame,
+      onMediaFrameReady,
+    ),
     screenLayer = project.layers.find((layer) => layer.type === "screen-media"),
     screenActive = Boolean(
       screenLayer?.visible &&
@@ -491,6 +501,7 @@ function useScreenTexture(
   project: TemplateProject,
   url: string | undefined,
   frame: number,
+  onFrameReady?: (frame: number) => void,
 ) {
   const screen = project.screen,
     [texture, setTexture] = useState<Texture>(),
@@ -512,7 +523,7 @@ function useScreenTexture(
       element = document.createElement("video");
       element.src = url;
       element.muted = true;
-      element.loop = true;
+      element.loop = false;
       element.playsInline = true;
       element.preload = "auto";
       video.current = element;
@@ -521,7 +532,7 @@ function useScreenTexture(
         next = new VideoTexture(element);
         configureTexture(next, gl.capabilities.getMaxAnisotropy(), true);
         setTexture(next);
-        void element.play().catch(() => {});
+        element.pause();
       };
       element.load();
     } else if (url) {
@@ -552,16 +563,45 @@ function useScreenTexture(
     };
   }, [screen?.testPattern, screen?.mediaAssetId, screen?.mediaType, url]);
   useEffect(() => {
+    const element = video.current,
+      expectsVideo = screen?.mediaType === "video" && Boolean(url);
     if (
-      video.current &&
-      Number.isFinite(video.current.duration) &&
-      video.current.duration > 0
+      !element ||
+      !texture ||
+      !Number.isFinite(element.duration) ||
+      element.duration <= 0
     ) {
-      const time = (frame / project.canvas.fps) % video.current.duration;
-      if (Math.abs(video.current.currentTime - time) > 0.12)
-        video.current.currentTime = time;
+      if (!expectsVideo) onFrameReady?.(frame);
+      return;
     }
-  }, [frame, project.canvas.fps]);
+    element.pause();
+    const time = (frame / project.canvas.fps) % element.duration,
+      tolerance = 1 / project.canvas.fps / 3;
+    if (Math.abs(element.currentTime - time) <= tolerance) {
+      texture.needsUpdate = true;
+      onFrameReady?.(frame);
+      return;
+    }
+    let active = true;
+    const ready = () => {
+      if (!active) return;
+      texture.needsUpdate = true;
+      onFrameReady?.(frame);
+    };
+    element.addEventListener("seeked", ready, { once: true });
+    element.currentTime = time;
+    return () => {
+      active = false;
+      element.removeEventListener("seeked", ready);
+    };
+  }, [
+    frame,
+    onFrameReady,
+    project.canvas.fps,
+    screen?.mediaType,
+    texture,
+    url,
+  ]);
   return texture;
 }
 

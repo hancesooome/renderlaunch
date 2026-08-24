@@ -1364,7 +1364,8 @@ function ExportDialog({
     ),
     [error, setError] = useState(""),
     [downloadUrl, setDownloadUrl] = useState(""),
-    [sceneReady, setSceneReady] = useState(!project.model?.assetId);
+    [sceneReady, setSceneReady] = useState(!project.model?.assetId),
+    [mediaReadyFrame, setMediaReadyFrame] = useState(-1);
   useEffect(
     () => () => {
       cancelled.current = true;
@@ -1507,6 +1508,7 @@ function ExportDialog({
         <div
           ref={stage}
           data-scene-ready={sceneReady}
+          data-media-frame={mediaReadyFrame}
           className={`renderComposition ${bgClass(project.background.preset)}`}
           style={backgroundStyle(project)}
         >
@@ -1525,6 +1527,7 @@ function ExportDialog({
                 autoFrame={false}
                 cameraControls={false}
                 onReady={() => setSceneReady(true)}
+                onMediaFrameReady={setMediaReadyFrame}
               />
             </div>
           )}
@@ -1597,6 +1600,8 @@ async function renderProjectMp4(
     if (isCancelled()) break;
     onFrame(frame);
     await nextPaint();
+    if (project.screen?.mediaType === "video")
+      await waitForMediaFrame(stage, frame, isCancelled);
     const canvas = await toCanvas(stage, {
       width: 1280,
       height: 720,
@@ -1658,6 +1663,23 @@ async function waitForRenderCanvas(stage: HTMLDivElement) {
         "The 3D scene did not become ready. Check the model, then retry the export.",
       );
     await new Promise((resolve) => window.setTimeout(resolve, 100));
+  }
+  await nextPaint();
+}
+
+async function waitForMediaFrame(
+  stage: HTMLDivElement,
+  frame: number,
+  isCancelled: () => boolean,
+) {
+  const deadline = performance.now() + 8_000;
+  while (Number(stage.dataset.mediaFrame) !== frame) {
+    if (isCancelled()) throw new Error("Export cancelled.");
+    if (performance.now() > deadline)
+      throw new Error(
+        `Screen video frame ${frame + 1} did not decode in time. Try a shorter or lower-resolution video.`,
+      );
+    await new Promise((resolve) => window.setTimeout(resolve, 10));
   }
   await nextPaint();
 }
