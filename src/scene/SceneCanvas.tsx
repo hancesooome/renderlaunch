@@ -10,6 +10,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import {
   ContactShadows,
   Environment,
+  Html,
   OrbitControls,
   TransformControls,
   useGLTF,
@@ -59,6 +60,8 @@ type Props = {
   onReady?: () => void;
   onMediaFrameReady?: (frame: number) => void;
   onTransform?: (value: TransformValue) => void;
+  selected3DLayerId?: string;
+  on3DLayerTransform?: (layerId: string, value: TransformValue) => void;
   onCamera?: (
     position: [number, number, number],
     target: [number, number, number],
@@ -77,6 +80,8 @@ export function SceneCanvas({
   onReady,
   onMediaFrameReady,
   onTransform,
+  selected3DLayerId,
+  on3DLayerTransform,
   onCamera,
 }: Props) {
   const asset = useAssetUrl(project.model?.assetId),
@@ -196,6 +201,13 @@ export function SceneCanvas({
             onReady={onReady}
             onMediaFrameReady={onMediaFrameReady}
           />
+          <Flat3DTextLayers
+            project={project}
+            frame={frame}
+            selectedId={selected3DLayerId}
+            mode={mode}
+            onTransform={on3DLayerTransform}
+          />
           {lightingVisible && (
             <>
               <Environment
@@ -222,6 +234,164 @@ export function SceneCanvas({
         />
       </Canvas>
     </div>
+  );
+}
+
+function Flat3DTextLayers({
+  project,
+  frame,
+  selectedId,
+  mode,
+  onTransform,
+}: {
+  project: TemplateProject;
+  frame: number;
+  selectedId?: string;
+  mode: TransformMode;
+  onTransform?: (layerId: string, value: TransformValue) => void;
+}) {
+  return (
+    <>
+      {project.layers
+        .filter(
+          (layer) =>
+            layer.type === "text" &&
+            layer.is3D &&
+            layer.visible &&
+            frame >= layer.startFrame &&
+            frame < layer.startFrame + layer.durationInFrames,
+        )
+        .map((layer) => (
+          <Flat3DText
+            key={layer.id}
+            project={project}
+            layer={layer}
+            frame={frame}
+            selected={selectedId === layer.id}
+            mode={mode}
+            onTransform={onTransform}
+          />
+        ))}
+    </>
+  );
+}
+
+function Flat3DText({
+  project,
+  layer,
+  frame,
+  selected,
+  mode,
+  onTransform,
+}: {
+  project: TemplateProject;
+  layer: TemplateProject["layers"][number];
+  frame: number;
+  selected: boolean;
+  mode: TransformMode;
+  onTransform?: (layerId: string, value: TransformValue) => void;
+}) {
+  const group = useRef<Group>(null),
+    dragging = useRef(false),
+    base = layer.transform3D,
+    position = base.position.map((value, index) =>
+      evaluateNumericProperty(
+        project.keyframeTracks,
+        layer.id,
+        `overlay3d.position.${["x", "y", "z"][index]}` as
+          | "overlay3d.position.x"
+          | "overlay3d.position.y"
+          | "overlay3d.position.z",
+        frame,
+        value,
+      ),
+    ) as [number, number, number],
+    rotation = base.rotation.map((value, index) =>
+      evaluateNumericProperty(
+        project.keyframeTracks,
+        layer.id,
+        `overlay3d.rotation.${["x", "y", "z"][index]}` as
+          | "overlay3d.rotation.x"
+          | "overlay3d.rotation.y"
+          | "overlay3d.rotation.z",
+        frame,
+        value,
+      ),
+    ) as [number, number, number],
+    scale = evaluateNumericProperty(
+      project.keyframeTracks,
+      layer.id,
+      "overlay3d.scale",
+      frame,
+      base.scale,
+    ),
+    opacity = evaluateNumericProperty(
+      project.keyframeTracks,
+      layer.id,
+      "overlay.opacity",
+      frame,
+      layer.transform2D.opacity,
+    ),
+    color = evaluateColorProperty(
+      project.keyframeTracks,
+      layer.id,
+      "overlay.color",
+      frame,
+      layer.textStyle.color,
+    );
+  const commit = () => {
+    if (!dragging.current || !group.current) return;
+    dragging.current = false;
+    onTransform?.(layer.id, {
+      position: group.current.position.toArray() as [number, number, number],
+      rotation: [
+        MathUtils.radToDeg(group.current.rotation.x),
+        MathUtils.radToDeg(group.current.rotation.y),
+        MathUtils.radToDeg(group.current.rotation.z),
+      ],
+      scale: group.current.scale.x,
+    });
+  };
+  return (
+    <>
+      <group
+        ref={group}
+        position={position}
+        rotation={rotation.map(MathUtils.degToRad) as [number, number, number]}
+        scale={scale}
+      >
+        <Html transform center>
+          <div
+            className="flat3DText"
+            style={{
+              width: layer.transform2D.width,
+              minHeight: layer.transform2D.height,
+              fontFamily: layer.textStyle.fontFamily,
+              fontWeight: layer.textStyle.fontWeight,
+              fontSize: layer.textStyle.fontSize,
+              color,
+              textAlign: layer.textStyle.align,
+              lineHeight: layer.textStyle.lineHeight,
+              letterSpacing: layer.textStyle.letterSpacing,
+              opacity,
+            }}
+          >
+            {layer.content}
+          </div>
+        </Html>
+      </group>
+      {selected && onTransform && (
+        <TransformControls
+          object={group as RefObject<Group>}
+          mode={mode}
+          size={0.75}
+          onMouseDown={() => {
+            dragging.current = true;
+          }}
+          onMouseUp={commit}
+        />
+      )}
+    </>
   );
 }
 

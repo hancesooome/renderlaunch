@@ -433,6 +433,11 @@ export function App() {
                 }
                 editable={selectedId === "phone" && !selected.locked}
                 mode={transformMode}
+                selected3DLayerId={
+                  selected.type === "text" && selected.is3D
+                    ? selected.id
+                    : undefined
+                }
                 onTransform={(value) =>
                   update((d) => {
                     if (d.model && autoKey) {
@@ -477,6 +482,51 @@ export function App() {
                       d.model.position = value.position;
                       d.model.rotation = value.rotation;
                       d.model.scale = Math.max(0.01, value.scale);
+                    }
+                  })
+                }
+                on3DLayerTransform={(layerId, value) =>
+                  update((draft) => {
+                    const layer = draft.layers.find(
+                      (item) => item.id === layerId,
+                    );
+                    if (!layer) return;
+                    if (autoKey) {
+                      value.position.forEach((axisValue, index) =>
+                        setNumericKeyframe(
+                          draft,
+                          layerId,
+                          `overlay3d.position.${["x", "y", "z"][index]}` as
+                            | "overlay3d.position.x"
+                            | "overlay3d.position.y"
+                            | "overlay3d.position.z",
+                          frame,
+                          axisValue,
+                        ),
+                      );
+                      value.rotation.forEach((axisValue, index) =>
+                        setNumericKeyframe(
+                          draft,
+                          layerId,
+                          `overlay3d.rotation.${["x", "y", "z"][index]}` as
+                            | "overlay3d.rotation.x"
+                            | "overlay3d.rotation.y"
+                            | "overlay3d.rotation.z",
+                          frame,
+                          axisValue,
+                        ),
+                      );
+                      setNumericKeyframe(
+                        draft,
+                        layerId,
+                        "overlay3d.scale",
+                        frame,
+                        value.scale,
+                      );
+                    } else {
+                      layer.transform3D.position = value.position;
+                      layer.transform3D.rotation = value.rotation;
+                      layer.transform3D.scale = value.scale;
                     }
                   })
                 }
@@ -757,6 +807,8 @@ function Inspector({
         layer={layer}
         frame={frame}
         update={update}
+        mode={mode}
+        setMode={setMode}
       />
     );
   return (
@@ -1928,6 +1980,39 @@ function getKeyframeChannels(
         valueType: "number",
         property: "camera.fov",
         value: project.camera.fov,
+      },
+    ];
+  if (layer.type === "text" && layer.is3D)
+    return [
+      ...(["x", "y", "z"] as const).map((axis, index) => ({
+        label: `3D Position ${axis.toUpperCase()}`,
+        valueType: "number" as const,
+        property: `overlay3d.position.${axis}` as const,
+        value: layer.transform3D.position[index],
+      })),
+      ...(["x", "y", "z"] as const).map((axis, index) => ({
+        label: `3D Rotation ${axis.toUpperCase()}`,
+        valueType: "number" as const,
+        property: `overlay3d.rotation.${axis}` as const,
+        value: layer.transform3D.rotation[index],
+      })),
+      {
+        label: "3D Scale",
+        valueType: "number" as const,
+        property: "overlay3d.scale" as const,
+        value: layer.transform3D.scale,
+      },
+      {
+        label: "Opacity",
+        valueType: "number" as const,
+        property: "overlay.opacity" as const,
+        value: layer.transform2D.opacity,
+      },
+      {
+        label: "Text Color",
+        valueType: "color" as const,
+        property: "overlay.color" as const,
+        value: layer.textStyle.color,
       },
     ];
   if (layer.type === "text" || layer.type === "image")
@@ -3266,6 +3351,7 @@ function OverlayStage({
     .filter(
       (layer) =>
         (layer.type === "text" || layer.type === "image") &&
+        !(layer.type === "text" && layer.is3D) &&
         layer.visible &&
         frame >= layer.startFrame &&
         frame < layer.startFrame + layer.durationInFrames,
@@ -3514,6 +3600,7 @@ function PreviewOverlays({
           .filter(
             (layer) =>
               (layer.type === "text" || layer.type === "image") &&
+              !(layer.type === "text" && layer.is3D) &&
               layer.visible &&
               frame >= layer.startFrame &&
               frame < layer.startFrame + layer.durationInFrames,
@@ -3963,11 +4050,15 @@ function OverlayInspectorV2({
   layer,
   frame,
   update,
+  mode,
+  setMode,
 }: {
   project: TemplateProject;
   layer: ProjectLayer;
   frame: number;
   update: (recipe: (draft: TemplateProject) => void) => void;
+  mode: TransformMode;
+  setMode: (mode: TransformMode) => void;
 }) {
   const setSelected = useEditorStore((s) => s.setSelectedLayer),
     mutate = (recipe: (item: ProjectLayer) => void) =>
@@ -4073,76 +4164,176 @@ function OverlayInspectorV2({
           </div>
         </Panel>
       )}
-      <Panel title="Transform">
-        <div className="triple">
-          <Field
-            label="X"
-            value={transform.x}
-            onChange={(value) =>
+      {layer.type === "text" && (
+        <Panel title="Layer Mode">
+          <button
+            className={`threeDLayerToggle ${layer.is3D ? "on" : ""}`}
+            onClick={() =>
               mutate((item) => {
-                item.transform2D.x = value;
+                item.is3D = !item.is3D;
+                if (item.is3D) {
+                  item.transform3D.position = [
+                    (item.transform2D.x + item.transform2D.width / 2 - 640) /
+                      320,
+                    -(item.transform2D.y + item.transform2D.height / 2 - 360) /
+                      320,
+                    1,
+                  ];
+                  item.transform3D.rotation[2] = item.transform2D.rotation;
+                }
               })
             }
-          />
-          <Field
-            label="Y"
-            value={transform.y}
-            onChange={(value) =>
-              mutate((item) => {
-                item.transform2D.y = value;
-              })
-            }
-          />
-          <Field
-            label="Rot"
-            suffix="°"
-            value={transform.rotation}
-            onChange={(value) =>
-              mutate((item) => {
-                item.transform2D.rotation = value;
-              })
-            }
-          />
-        </div>
-        <div className="triple">
-          <Field
-            label="W"
-            value={transform.width}
-            onChange={(value) =>
-              mutate((item) => {
-                item.transform2D.width = Math.max(20, value);
-              })
-            }
-          />
-          <Field
-            label="H"
-            value={transform.height}
-            onChange={(value) =>
-              mutate((item) => {
-                item.transform2D.height = Math.max(20, value);
-              })
-            }
-          />
-        </div>
-        <div className="row">
-          <label>Opacity</label>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step=".05"
-            value={transform.opacity}
-            onChange={(e) =>
-              mutate((item) => {
-                item.transform2D.opacity = Number(e.target.value);
-              })
-            }
-          />
-          <div className="smallInput">
-            {Math.round(transform.opacity * 100)}%
+          >
+            <I.Box /> {layer.is3D ? "3D Layer Enabled" : "Enable 3D Layer"}
+          </button>
+        </Panel>
+      )}
+      {layer.is3D ? (
+        <Panel title="3D Transform">
+          <div className="transformModes">
+            <button
+              className={mode === "translate" ? "on" : ""}
+              onClick={() => setMode("translate")}
+            >
+              <I.Move3d /> Move
+            </button>
+            <button
+              className={mode === "rotate" ? "on" : ""}
+              onClick={() => setMode("rotate")}
+            >
+              <I.Rotate3d /> Rotate
+            </button>
+            <button
+              className={mode === "scale" ? "on" : ""}
+              onClick={() => setMode("scale")}
+            >
+              <I.Maximize2 /> Scale
+            </button>
           </div>
-        </div>
-      </Panel>
+          <label>Position</label>
+          <div className="triple">
+            {["X", "Y", "Z"].map((axis, index) => (
+              <Field
+                key={axis}
+                label={axis}
+                value={layer.transform3D.position[index]}
+                onChange={(value) =>
+                  mutate((item) => {
+                    item.transform3D.position[index] = value;
+                  })
+                }
+              />
+            ))}
+          </div>
+          <label>Rotation</label>
+          <div className="triple">
+            {["X", "Y", "Z"].map((axis, index) => (
+              <Field
+                key={axis}
+                label={axis}
+                suffix="°"
+                value={layer.transform3D.rotation[index]}
+                onChange={(value) =>
+                  mutate((item) => {
+                    item.transform3D.rotation[index] = value;
+                  })
+                }
+              />
+            ))}
+          </div>
+          <div className="triple">
+            <Field
+              label="Scale"
+              value={layer.transform3D.scale}
+              onChange={(value) =>
+                mutate((item) => {
+                  item.transform3D.scale = Math.max(0.01, value);
+                })
+              }
+            />
+            <Field
+              label="Width"
+              value={transform.width}
+              onChange={(value) =>
+                mutate((item) => {
+                  item.transform2D.width = Math.max(20, value);
+                })
+              }
+            />
+          </div>
+        </Panel>
+      ) : (
+        <Panel title="Transform">
+          <div className="triple">
+            <Field
+              label="X"
+              value={transform.x}
+              onChange={(value) =>
+                mutate((item) => {
+                  item.transform2D.x = value;
+                })
+              }
+            />
+            <Field
+              label="Y"
+              value={transform.y}
+              onChange={(value) =>
+                mutate((item) => {
+                  item.transform2D.y = value;
+                })
+              }
+            />
+            <Field
+              label="Rot"
+              suffix="°"
+              value={transform.rotation}
+              onChange={(value) =>
+                mutate((item) => {
+                  item.transform2D.rotation = value;
+                })
+              }
+            />
+          </div>
+          <div className="triple">
+            <Field
+              label="W"
+              value={transform.width}
+              onChange={(value) =>
+                mutate((item) => {
+                  item.transform2D.width = Math.max(20, value);
+                })
+              }
+            />
+            <Field
+              label="H"
+              value={transform.height}
+              onChange={(value) =>
+                mutate((item) => {
+                  item.transform2D.height = Math.max(20, value);
+                })
+              }
+            />
+          </div>
+          <div className="row">
+            <label>Opacity</label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step=".05"
+              value={transform.opacity}
+              onChange={(e) =>
+                mutate((item) => {
+                  item.transform2D.opacity = Number(e.target.value);
+                })
+              }
+            />
+            <div className="smallInput">
+              {Math.round(transform.opacity * 100)}%
+            </div>
+          </div>
+        </Panel>
+      )}
       <Panel title="Timing">
         <div className="triple">
           <Field
@@ -4654,6 +4845,12 @@ function createOverlayLayer(
     zIndex: 10,
     color: "#c0aaff",
     content: preset[0],
+    is3D: false,
+    transform3D: {
+      position: [0, 0, 1],
+      rotation: [0, 0, 0],
+      scale: 1,
+    },
     transform2D: {
       x: preset[2],
       y: preset[3],

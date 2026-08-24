@@ -64,6 +64,12 @@ export async function loadRecentProject(): Promise<TemplateProject | null> {
       replaceable: false,
       zIndex: 0,
       color: "#ffd38f",
+      is3D: false,
+      transform3D: {
+        position: [0, 0, 1],
+        rotation: [0, 0, 0],
+        scale: 1,
+      },
       transform2D: {
         x: 0,
         y: 0,

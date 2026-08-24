@@ -1087,6 +1087,30 @@ footer {
   background: #e8f2ff;
   border-color: #8fc5ff;
 }
+.threeDLayerToggle {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: var(--ui-input);
+}
+.threeDLayerToggle.on {
+  color: var(--ui-accent);
+  border-color: var(--ui-accent);
+  background: var(--ui-accent-soft);
+}
+.flat3DText {
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  backface-visibility: visible;
+  transform-style: preserve-3d;
+  user-select: none;
+}
 .normalizationActions {
   display: grid;
   grid-template-columns: 1fr 1fr;

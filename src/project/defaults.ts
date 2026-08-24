@@ -3,6 +3,12 @@ import type { TemplateProject } from "./schema";
 export function createDefaultProject(): TemplateProject {
   const now = new Date().toISOString();
   const layerDefaults = {
+    is3D: false,
+    transform3D: {
+      position: [0, 0, 1] as [number, number, number],
+      rotation: [0, 0, 0] as [number, number, number],
+      scale: 1,
+    },
     transform2D: {
       x: 120,
       y: 110,

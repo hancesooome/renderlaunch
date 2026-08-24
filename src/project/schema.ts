@@ -31,6 +31,13 @@ export const numericKeyframePropertySchema = z.enum([
   "overlay.height",
   "overlay.rotation",
   "overlay.opacity",
+  "overlay3d.position.x",
+  "overlay3d.position.y",
+  "overlay3d.position.z",
+  "overlay3d.rotation.x",
+  "overlay3d.rotation.y",
+  "overlay3d.rotation.z",
+  "overlay3d.scale",
   "lighting.environmentIntensity",
   "lighting.keyIntensity",
   "lighting.keyPosition.x",
@@ -128,6 +135,18 @@ export const layerSchema = z.object({
       height: 120,
       rotation: 0,
       opacity: 1,
+    }),
+  is3D: z.boolean().default(false),
+  transform3D: z
+    .object({
+      position: vector3,
+      rotation: vector3,
+      scale: z.number().positive(),
+    })
+    .default({
+      position: [0, 0, 1],
+      rotation: [0, 0, 0],
+      scale: 1,
     }),
   textStyle: z
     .object({
