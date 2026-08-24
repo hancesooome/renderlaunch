@@ -28,6 +28,314 @@ button {
   border: 0;
   cursor: pointer;
 }
+
+/* Master video workspace */
+.videoEditorWorkspace {
+  height: 100vh;
+  display: grid;
+  grid-template-rows: 64px minmax(0, 1fr) 210px;
+  background: var(--ui-bg);
+  color: var(--ui-text);
+}
+.videoEditorHeader {
+  height: 64px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--ui-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--ui-surface);
+}
+.videoProjectIdentity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.videoProjectIdentity > svg {
+  width: 34px;
+  height: 34px;
+  padding: 7px;
+  border-radius: 9px;
+  color: var(--ui-accent);
+  background: var(--ui-accent-soft);
+}
+.videoProjectIdentity div {
+  display: grid;
+  gap: 3px;
+}
+.videoProjectIdentity b {
+  font-size: 15px;
+}
+.videoProjectIdentity small,
+.sceneBinHead small,
+.masterTimelineHead small {
+  color: var(--ui-muted);
+}
+.videoEditorBody {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+.sceneBin {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  padding: 16px 12px 12px;
+  border-right: 1px solid var(--ui-border);
+  background: var(--ui-panel);
+}
+.sceneBinHead,
+.masterPreviewHead,
+.masterTimelineHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sceneBinHead {
+  padding: 0 4px 13px;
+}
+.sceneBinHead h2,
+.masterPreviewHead h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.sceneBinHead > button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+}
+.sceneCards {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 3px;
+}
+.sceneCard {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px;
+  border: 1px solid var(--ui-border);
+  border-radius: 10px;
+  text-align: left;
+  background: var(--ui-surface);
+}
+.sceneCard.active {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent-soft);
+  box-shadow: 0 0 0 1px var(--ui-accent) inset;
+}
+.sceneThumbnail {
+  position: relative;
+  width: 92px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: #15214488;
+}
+.sceneThumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.sceneThumbnail > span {
+  position: absolute;
+  left: 5px;
+  bottom: 5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  background: #111827cc;
+  color: #fff;
+  font-size: 9px;
+}
+.sceneCardInfo {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+.sceneCardInfo b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sceneCardInfo small {
+  color: var(--ui-muted);
+}
+.sceneCard > svg {
+  width: 14px;
+  color: var(--ui-muted);
+}
+.sceneActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  padding-top: 10px;
+}
+.sceneActions button,
+.masterPreviewHead button {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  background: var(--ui-surface);
+}
+.sceneActions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.sceneActions .danger {
+  color: #e5484d;
+}
+.masterPreviewPanel {
+  min-width: 0;
+  min-height: 0;
+  padding: 16px 22px;
+  display: grid;
+  grid-template-rows: 42px minmax(0, 1fr) 44px;
+  gap: 10px;
+  background: var(--ui-bg);
+}
+.masterPreviewHead small {
+  color: var(--ui-accent);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+.masterPreviewHead button {
+  padding: 0 12px;
+}
+.masterPreviewStage {
+  position: relative;
+  height: 100%;
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  justify-self: center;
+  overflow: hidden;
+  border-radius: 12px;
+  isolation: isolate;
+  box-shadow: 0 14px 42px var(--ui-shadow);
+}
+.masterPreviewStage .threeCanvas {
+  position: absolute;
+  inset: 0;
+}
+.masterPreviewControls {
+  width: min(900px, 90%);
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.masterPreviewControls button {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--ui-border);
+  border-radius: 50%;
+  background: var(--ui-surface);
+}
+.masterPreviewControls input {
+  min-width: 0;
+  flex: 1;
+  accent-color: var(--ui-accent);
+}
+.masterPreviewControls b {
+  min-width: 145px;
+  font-size: 11px;
+  text-align: right;
+}
+.masterTimelinePanel {
+  min-height: 0;
+  padding: 12px 18px 18px;
+  border-top: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+}
+.masterTimelineHead {
+  height: 36px;
+}
+.masterTimelineHead > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.masterTimelineHead > span {
+  color: var(--ui-muted);
+  font-variant-numeric: tabular-nums;
+}
+.masterTimeline {
+  position: relative;
+  height: 125px;
+  display: flex;
+  align-items: stretch;
+  padding-top: 18px;
+  overflow: hidden;
+  border: 1px solid var(--ui-border);
+  border-radius: 9px;
+  background: var(--ui-bg);
+}
+.masterSceneClip {
+  min-width: 80px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  overflow: hidden;
+  border-right: 2px solid var(--ui-bg);
+  background: color-mix(in srgb, var(--ui-accent) 20%, var(--ui-surface));
+  text-align: left;
+}
+.masterSceneClip.active {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--ui-accent) 32%, var(--ui-surface));
+}
+.masterSceneClip span,
+.masterSceneClip small {
+  font-size: 9px;
+  color: var(--ui-muted);
+}
+.masterSceneClip b {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.masterPlayhead {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--ui-accent);
+  pointer-events: none;
+}
+.masterPlayhead::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: -5px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ui-accent);
+}
 svg {
   width: 18px;
   height: 18px;

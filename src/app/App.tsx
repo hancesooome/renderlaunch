@@ -29,6 +29,7 @@ import type {
   TemplateProject,
   TextAnimationPreset,
   TextCursorStyle,
+  VideoProject,
 } from "../project/schema";
 import { useEditorStore } from "../store/editorStore";
 import type { TransformMode } from "../store/editorStore";
@@ -58,6 +59,7 @@ export function App() {
     resolved: resolvedTheme,
   } = useTheme();
   const project = useEditorStore((s) => s.project),
+    videoProject = useEditorStore((s) => s.videoProject),
     frame = useEditorStore((s) => s.currentFrame),
     playing = useEditorStore((s) => s.playing),
     selectedId = useEditorStore((s) => s.selectedLayerId),
@@ -76,7 +78,11 @@ export function App() {
     setPreview = useEditorStore((s) => s.setPreview),
     undo = useEditorStore((s) => s.undo),
     redo = useEditorStore((s) => s.redo),
-    persist = useEditorStore((s) => s.persist);
+    persist = useEditorStore((s) => s.persist),
+    addScene = useEditorStore((s) => s.addScene),
+    duplicateScene = useEditorStore((s) => s.duplicateScene),
+    deleteScene = useEditorStore((s) => s.deleteScene),
+    selectScene = useEditorStore((s) => s.selectScene);
   const selected =
     project.layers.find((layer) => layer.id === selectedId) ??
     project.layers[0];
@@ -87,6 +93,7 @@ export function App() {
   const [uploading, setUploading] = useState(false),
     [uploadError, setUploadError] = useState("");
   const [frameRequest, setFrameRequest] = useState(0),
+    [sceneEditorOpen, setSceneEditorOpen] = useState(false),
     [testingTemplate, setTestingTemplate] = useState(false),
     [exporting, setExporting] = useState(false),
     [themeMenuOpen, setThemeMenuOpen] = useState(false),
@@ -136,7 +143,7 @@ export function App() {
         parseFloat(style.paddingBottom),
     );
     return () => observer.disconnect();
-  }, []);
+  }, [sceneEditorOpen]);
   useEffect(() => {
     const enforceTimelineLimit = () =>
       setTimelineHeight((height) =>
@@ -154,7 +161,8 @@ export function App() {
         target instanceof HTMLTextAreaElement ||
         target instanceof HTMLSelectElement ||
         (target instanceof HTMLElement &&
-          (target.isContentEditable || target.getAttribute("role") === "textbox"))
+          (target.isContentEditable ||
+            target.getAttribute("role") === "textbox"))
       )
         return;
       event.preventDefault();
@@ -258,6 +266,23 @@ export function App() {
       setUploading(false);
     }
   };
+  if (!sceneEditorOpen)
+    return (
+      <VideoEditorWorkspace
+        videoProject={videoProject}
+        project={project}
+        frame={frame}
+        playing={playing}
+        onFrame={setFrame}
+        onPlay={setPlaying}
+        onSelectScene={selectScene}
+        onAddScene={() => addScene()}
+        onDuplicateScene={() => duplicateScene()}
+        onDeleteScene={() => deleteScene(videoProject.activeSceneId)}
+        onOpenScene={() => setSceneEditorOpen(true)}
+        onSave={() => void persist()}
+      />
+    );
   return (
     <>
       <main
@@ -266,415 +291,422 @@ export function App() {
           { "--timeline-height": `${timelineHeight}px` } as React.CSSProperties
         }
       >
-      <header>
-        <button className="icon" aria-label="Back">
-          <I.ChevronLeft />
-        </button>
-        <div className="project">
-          <input
-            aria-label="Project name"
-            value={project.name}
-            onChange={(e) =>
-              update((d) => {
-                d.name = e.target.value || "Untitled Template";
-              })
-            }
-          />
-          <span className={status === "saved" ? "saved" : "saving"} />
-          <small>
-            {status === "error"
-              ? "Save failed"
-              : status === "saved"
-                ? "Saved"
-                : status === "saving"
-                  ? "Saving…"
-                  : "Unsaved"}
-          </small>
-        </div>
-        <div className="history">
-          <button aria-label="Undo" disabled={!past.length} onClick={undo}>
-            <I.Undo2 />
-          </button>
-          <button aria-label="Redo" disabled={!future.length} onClick={redo}>
-            <I.Redo2 />
-          </button>
-        </div>
-        <button className="ratio">
-          16:9 <I.ChevronDown />
-        </button>
-        <div className="actions">
+        <header>
           <button
+            className="icon"
+            aria-label="Back to video editor"
             onClick={() => {
-              setFrame(0);
-              setPlaying(true);
-              setPreview(true);
+              setPlaying(false);
+              setSceneEditorOpen(false);
             }}
           >
-            <I.Play /> Preview
+            <I.ChevronLeft />
           </button>
-          <button onClick={() => setTestingTemplate(true)}>
-            <I.UserRound /> Preview as User
-          </button>
-          <button onClick={() => setExporting(true)}>
-            <I.Download /> Export Preview
-          </button>
-          <button
-            className="primary"
-            onClick={() => {
-              update((draft) => {
-                draft.thumbnailDataUrl = createTemplateThumbnail(draft);
-              });
-              void persist();
-            }}
-          >
-            <I.Save /> Save Template
-          </button>
-        </div>
-      </header>
-      <section className="editor">
-        <nav>
-          {(
-            [
-              ["Model", I.Box],
-              ["Media", I.Image],
-              ["Text", I.Type],
-              ["Scene", I.Layers3],
-            ] as const
-          ).map(([name, Icon]) => (
-            <button
-              key={name}
-              className={tool === name ? "active" : ""}
-              onClick={() => setTool(name)}
-            >
-              <Icon />
-              <span>{name}</span>
-            </button>
-          ))}
-          <button
-            className="settings"
-            onClick={() => setThemeMenuOpen((value) => !value)}
-          >
-            <I.Settings />
-            <span>Settings</span>
-          </button>
-          {themeMenuOpen && (
-            <ThemeMenu
-              preference={theme}
-              resolved={resolvedTheme}
-              onChange={setTheme}
-              onClose={() => setThemeMenuOpen(false)}
+          <div className="project">
+            <input
+              aria-label="Project name"
+              value={project.name}
+              onChange={(e) =>
+                update((d) => {
+                  d.name = e.target.value || "Untitled Template";
+                })
+              }
             />
-          )}
-        </nav>
-        <aside className="left">
-          <h2>{tool === "Model" ? "Layers" : tool}</h2>
-          <div className="layerList">
-            {project.layers.map((layer) => (
-              <LayerRow
-                key={layer.id}
-                layer={layer}
-                selected={selectedId === layer.id}
-                onSelect={() => setSelected(layer.id)}
-                onToggle={(key) =>
-                  update((d) => {
-                    const item = d.layers.find((x) => x.id === layer.id)!;
-                    item[key] = !item[key];
-                  })
-                }
-              />
+            <span className={status === "saved" ? "saved" : "saving"} />
+            <small>
+              {status === "error"
+                ? "Save failed"
+                : status === "saved"
+                  ? "Saved"
+                  : status === "saving"
+                    ? "Saving…"
+                    : "Unsaved"}
+            </small>
+          </div>
+          <div className="history">
+            <button aria-label="Undo" disabled={!past.length} onClick={undo}>
+              <I.Undo2 />
+            </button>
+            <button aria-label="Redo" disabled={!future.length} onClick={redo}>
+              <I.Redo2 />
+            </button>
+          </div>
+          <button className="ratio">
+            16:9 <I.ChevronDown />
+          </button>
+          <div className="actions">
+            <button
+              onClick={() => {
+                setFrame(0);
+                setPlaying(true);
+                setPreview(true);
+              }}
+            >
+              <I.Play /> Preview
+            </button>
+            <button onClick={() => setTestingTemplate(true)}>
+              <I.UserRound /> Preview as User
+            </button>
+            <button onClick={() => setExporting(true)}>
+              <I.Download /> Export Preview
+            </button>
+            <button
+              className="primary"
+              onClick={() => {
+                update((draft) => {
+                  draft.thumbnailDataUrl = createTemplateThumbnail(draft);
+                });
+                void persist();
+              }}
+            >
+              <I.Save /> Save Template
+            </button>
+          </div>
+        </header>
+        <section className="editor">
+          <nav>
+            {(
+              [
+                ["Model", I.Box],
+                ["Media", I.Image],
+                ["Text", I.Type],
+                ["Scene", I.Layers3],
+              ] as const
+            ).map(([name, Icon]) => (
+              <button
+                key={name}
+                className={tool === name ? "active" : ""}
+                onClick={() => setTool(name)}
+              >
+                <Icon />
+                <span>{name}</span>
+              </button>
             ))}
-          </div>
-          <div className="modelCard">
-            <div className="cardTitle">
-              <h3>Model</h3>
-              <I.MoreHorizontal />
-            </div>
-            <div className="asset">
-              <div className="thumb">
-                <Phone mini frame={0} project={project} />
-              </div>
-              <div>
-                <b>{project.model?.fileName ?? "No model"}</b>
-                <small>
-                  {project.model?.fileSize
-                    ? `${(project.model.fileSize / 1024 / 1024).toFixed(1)} MB`
-                    : "Upload a GLB"}
-                </small>
-                {project.model?.assetId && (
-                  <span>
-                    <I.CircleCheck /> Model ready
-                  </span>
-                )}
-              </div>
-            </div>
-            {project.model?.stats && (
-              <div className="modelStats">
-                <span>{project.model.stats.nodes} nodes</span>
-                <span>{project.model.stats.meshes} meshes</span>
-                <span>{project.model.stats.materials} materials</span>
-                <span>{project.model.stats.animations} animations</span>
-                <span>
-                  {project.model.stats.triangles.toLocaleString()} triangles
-                </span>
-              </div>
-            )}
-            <label className={`replace ${uploading ? "disabled" : ""}`}>
-              <I.Upload />
-              {uploading
-                ? "Inspecting…"
-                : project.model?.assetId
-                  ? "Replace Model"
-                  : "Upload Model"}
-              <input
-                hidden
-                type="file"
-                accept=".glb,model/gltf-binary"
-                disabled={uploading}
-                onChange={(e) => {
-                  void replaceModel(e.target.files?.[0]);
-                  e.target.value = "";
-                }}
+            <button
+              className="settings"
+              onClick={() => setThemeMenuOpen((value) => !value)}
+            >
+              <I.Settings />
+              <span>Settings</span>
+            </button>
+            {themeMenuOpen && (
+              <ThemeMenu
+                preference={theme}
+                resolved={resolvedTheme}
+                onChange={setTheme}
+                onClose={() => setThemeMenuOpen(false)}
               />
-            </label>
-            {uploadError && (
-              <div className="modelError">
-                <I.CircleAlert />
-                {uploadError}
-              </div>
             )}
-          </div>
-        </aside>
-        <div className="compositionViewport" ref={compositionViewport}>
-          <div
-            className={`workspace ${bgClass(project.background.preset)}`}
-            style={{
-              ...backgroundStyle(project, frame),
-              width: compositionSize.width,
-              height: compositionSize.height,
-            }}
-          >
-            <div className="canvasGlow" />
-            {isLayerActive(project, "phone", frame) &&
-            project.model?.assetId ? (
-              <SceneCanvas
-                project={project}
-                frame={frame}
-                frameRequest={frameRequest}
-                autoFrame={
-                  Boolean(project.model?.assetId) &&
-                  project.camera?.framedAssetId !== project.model?.assetId
-                }
-                editable={selectedId === "phone" && !selected.locked}
-                mode={transformMode}
-                selected3DLayerId={
-                  selected.type === "text" && selected.is3D
-                    ? selected.id
-                    : undefined
-                }
-                onTransform={(value) =>
-                  update((d) => {
-                    if (d.model && autoKey) {
-                      const deviceId =
-                        d.layers.find((layer) => layer.type === "device")?.id ??
-                        "phone";
-                      if (transformMode === "translate")
+          </nav>
+          <aside className="left">
+            <h2>{tool === "Model" ? "Layers" : tool}</h2>
+            <div className="layerList">
+              {project.layers.map((layer) => (
+                <LayerRow
+                  key={layer.id}
+                  layer={layer}
+                  selected={selectedId === layer.id}
+                  onSelect={() => setSelected(layer.id)}
+                  onToggle={(key) =>
+                    update((d) => {
+                      const item = d.layers.find((x) => x.id === layer.id)!;
+                      item[key] = !item[key];
+                    })
+                  }
+                />
+              ))}
+            </div>
+            <div className="modelCard">
+              <div className="cardTitle">
+                <h3>Model</h3>
+                <I.MoreHorizontal />
+              </div>
+              <div className="asset">
+                <div className="thumb">
+                  <Phone mini frame={0} project={project} />
+                </div>
+                <div>
+                  <b>{project.model?.fileName ?? "No model"}</b>
+                  <small>
+                    {project.model?.fileSize
+                      ? `${(project.model.fileSize / 1024 / 1024).toFixed(1)} MB`
+                      : "Upload a GLB"}
+                  </small>
+                  {project.model?.assetId && (
+                    <span>
+                      <I.CircleCheck /> Model ready
+                    </span>
+                  )}
+                </div>
+              </div>
+              {project.model?.stats && (
+                <div className="modelStats">
+                  <span>{project.model.stats.nodes} nodes</span>
+                  <span>{project.model.stats.meshes} meshes</span>
+                  <span>{project.model.stats.materials} materials</span>
+                  <span>{project.model.stats.animations} animations</span>
+                  <span>
+                    {project.model.stats.triangles.toLocaleString()} triangles
+                  </span>
+                </div>
+              )}
+              <label className={`replace ${uploading ? "disabled" : ""}`}>
+                <I.Upload />
+                {uploading
+                  ? "Inspecting…"
+                  : project.model?.assetId
+                    ? "Replace Model"
+                    : "Upload Model"}
+                <input
+                  hidden
+                  type="file"
+                  accept=".glb,model/gltf-binary"
+                  disabled={uploading}
+                  onChange={(e) => {
+                    void replaceModel(e.target.files?.[0]);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              {uploadError && (
+                <div className="modelError">
+                  <I.CircleAlert />
+                  {uploadError}
+                </div>
+              )}
+            </div>
+          </aside>
+          <div className="compositionViewport" ref={compositionViewport}>
+            <div
+              className={`workspace ${bgClass(project.background.preset)}`}
+              style={{
+                ...backgroundStyle(project, frame),
+                width: compositionSize.width,
+                height: compositionSize.height,
+              }}
+            >
+              <div className="canvasGlow" />
+              {isLayerActive(project, "phone", frame) &&
+              project.model?.assetId ? (
+                <SceneCanvas
+                  project={project}
+                  frame={frame}
+                  frameRequest={frameRequest}
+                  autoFrame={
+                    Boolean(project.model?.assetId) &&
+                    project.camera?.framedAssetId !== project.model?.assetId
+                  }
+                  editable={selectedId === "phone" && !selected.locked}
+                  mode={transformMode}
+                  selected3DLayerId={
+                    selected.type === "text" && selected.is3D
+                      ? selected.id
+                      : undefined
+                  }
+                  onTransform={(value) =>
+                    update((d) => {
+                      if (d.model && autoKey) {
+                        const deviceId =
+                          d.layers.find((layer) => layer.type === "device")
+                            ?.id ?? "phone";
+                        if (transformMode === "translate")
+                          value.position.forEach((axisValue, index) =>
+                            setNumericKeyframe(
+                              d,
+                              deviceId,
+                              `device.position.${["x", "y", "z"][index]}` as
+                                | "device.position.x"
+                                | "device.position.y"
+                                | "device.position.z",
+                              frame,
+                              axisValue,
+                            ),
+                          );
+                        else if (transformMode === "rotate")
+                          value.rotation.forEach((axisValue, index) =>
+                            setNumericKeyframe(
+                              d,
+                              deviceId,
+                              `device.rotation.${["x", "y", "z"][index]}` as
+                                | "device.rotation.x"
+                                | "device.rotation.y"
+                                | "device.rotation.z",
+                              frame,
+                              axisValue,
+                            ),
+                          );
+                        else
+                          setNumericKeyframe(
+                            d,
+                            deviceId,
+                            "device.scale",
+                            frame,
+                            Math.max(0.01, value.scale),
+                          );
+                      } else if (d.model) {
+                        d.model.position = value.position;
+                        d.model.rotation = value.rotation;
+                        d.model.scale = Math.max(0.01, value.scale);
+                      }
+                    })
+                  }
+                  on3DLayerTransform={(layerId, value) =>
+                    update((draft) => {
+                      const layer = draft.layers.find(
+                        (item) => item.id === layerId,
+                      );
+                      if (!layer) return;
+                      if (autoKey) {
                         value.position.forEach((axisValue, index) =>
                           setNumericKeyframe(
-                            d,
-                            deviceId,
-                            `device.position.${["x", "y", "z"][index]}` as
-                              | "device.position.x"
-                              | "device.position.y"
-                              | "device.position.z",
+                            draft,
+                            layerId,
+                            `overlay3d.position.${["x", "y", "z"][index]}` as
+                              | "overlay3d.position.x"
+                              | "overlay3d.position.y"
+                              | "overlay3d.position.z",
                             frame,
                             axisValue,
                           ),
                         );
-                      else if (transformMode === "rotate")
                         value.rotation.forEach((axisValue, index) =>
                           setNumericKeyframe(
-                            d,
-                            deviceId,
-                            `device.rotation.${["x", "y", "z"][index]}` as
-                              | "device.rotation.x"
-                              | "device.rotation.y"
-                              | "device.rotation.z",
+                            draft,
+                            layerId,
+                            `overlay3d.rotation.${["x", "y", "z"][index]}` as
+                              | "overlay3d.rotation.x"
+                              | "overlay3d.rotation.y"
+                              | "overlay3d.rotation.z",
                             frame,
                             axisValue,
                           ),
                         );
-                      else
                         setNumericKeyframe(
-                          d,
-                          deviceId,
-                          "device.scale",
+                          draft,
+                          layerId,
+                          "overlay3d.scale",
                           frame,
-                          Math.max(0.01, value.scale),
+                          value.scale,
                         );
-                    } else if (d.model) {
-                      d.model.position = value.position;
-                      d.model.rotation = value.rotation;
-                      d.model.scale = Math.max(0.01, value.scale);
-                    }
-                  })
-                }
-                on3DLayerTransform={(layerId, value) =>
-                  update((draft) => {
-                    const layer = draft.layers.find(
-                      (item) => item.id === layerId,
-                    );
-                    if (!layer) return;
-                    if (autoKey) {
-                      value.position.forEach((axisValue, index) =>
-                        setNumericKeyframe(
-                          draft,
-                          layerId,
-                          `overlay3d.position.${["x", "y", "z"][index]}` as
-                            | "overlay3d.position.x"
-                            | "overlay3d.position.y"
-                            | "overlay3d.position.z",
-                          frame,
-                          axisValue,
-                        ),
-                      );
-                      value.rotation.forEach((axisValue, index) =>
-                        setNumericKeyframe(
-                          draft,
-                          layerId,
-                          `overlay3d.rotation.${["x", "y", "z"][index]}` as
-                            | "overlay3d.rotation.x"
-                            | "overlay3d.rotation.y"
-                            | "overlay3d.rotation.z",
-                          frame,
-                          axisValue,
-                        ),
-                      );
-                      setNumericKeyframe(
-                        draft,
-                        layerId,
-                        "overlay3d.scale",
-                        frame,
-                        value.scale,
-                      );
-                    } else {
-                      layer.transform3D.position = value.position;
-                      layer.transform3D.rotation = value.rotation;
-                      layer.transform3D.scale = value.scale;
-                    }
-                  })
-                }
-                onCamera={(position, target, reason) =>
-                  update((d) => {
-                    d.camera ??= {
-                      position: [0, 0.6, 4],
-                      target: [0, 0, 0],
-                      fov: 35,
-                      defaultPosition: [0, 0.6, 4],
-                      defaultTarget: [0, 0, 0],
-                    };
-                    if (autoKey && reason === "interaction") {
-                      position.forEach((value, axis) =>
-                        setNumericKeyframe(
-                          d,
-                          "camera",
-                          `camera.position.${(["x", "y", "z"] as const)[axis]}`,
-                          frame,
-                          value,
-                        ),
-                      );
-                      target.forEach((value, axis) =>
-                        setNumericKeyframe(
-                          d,
-                          "camera",
-                          `camera.target.${(["x", "y", "z"] as const)[axis]}`,
-                          frame,
-                          value,
-                        ),
-                      );
-                    } else {
-                      d.camera.position = position;
-                      d.camera.target = target;
-                    }
-                    if (reason === "frame" && d.model?.assetId) {
-                      d.camera.framedAssetId = d.model.assetId;
-                    }
-                  })
-                }
+                      } else {
+                        layer.transform3D.position = value.position;
+                        layer.transform3D.rotation = value.rotation;
+                        layer.transform3D.scale = value.scale;
+                      }
+                    })
+                  }
+                  onCamera={(position, target, reason) =>
+                    update((d) => {
+                      d.camera ??= {
+                        position: [0, 0.6, 4],
+                        target: [0, 0, 0],
+                        fov: 35,
+                        defaultPosition: [0, 0.6, 4],
+                        defaultTarget: [0, 0, 0],
+                      };
+                      if (autoKey && reason === "interaction") {
+                        position.forEach((value, axis) =>
+                          setNumericKeyframe(
+                            d,
+                            "camera",
+                            `camera.position.${(["x", "y", "z"] as const)[axis]}`,
+                            frame,
+                            value,
+                          ),
+                        );
+                        target.forEach((value, axis) =>
+                          setNumericKeyframe(
+                            d,
+                            "camera",
+                            `camera.target.${(["x", "y", "z"] as const)[axis]}`,
+                            frame,
+                            value,
+                          ),
+                        );
+                      } else {
+                        d.camera.position = position;
+                        d.camera.target = target;
+                      }
+                      if (reason === "frame" && d.model?.assetId) {
+                        d.camera.framedAssetId = d.model.assetId;
+                      }
+                    })
+                  }
+                />
+              ) : (
+                isLayerActive(project, "phone", frame) && (
+                  <div className={selectedId === "phone" ? "selectionBox" : ""}>
+                    <Phone frame={frame} project={project} />
+                    {selectedId === "phone" &&
+                      [0, 1, 2, 3].map((i) => (
+                        <i className={`handle h${i}`} key={i} />
+                      ))}
+                  </div>
+                )
+              )}
+              <OverlayStage
+                project={project}
+                frame={frame}
+                selectedId={selectedId}
+                update={update}
+                onSelect={setSelected}
               />
-            ) : (
-              isLayerActive(project, "phone", frame) && (
-                <div className={selectedId === "phone" ? "selectionBox" : ""}>
-                  <Phone frame={frame} project={project} />
-                  {selectedId === "phone" &&
-                    [0, 1, 2, 3].map((i) => (
-                      <i className={`handle h${i}`} key={i} />
-                    ))}
-                </div>
-              )
-            )}
-            <OverlayStage
-              project={project}
-              frame={frame}
-              selectedId={selectedId}
-              update={update}
-              onSelect={setSelected}
-            />
-            <CompositionTools
-              tool={tool}
-              project={project}
-              update={update}
-              onSelect={setSelected}
-            />
-            <div className="canvasControls">
-              <button onClick={() => setZoom(zoom - 5)}>
-                <I.Minus />
-              </button>
-              <b>{zoom}%</b>
-              <button onClick={() => setZoom(zoom + 5)}>
-                <I.Plus />
-              </button>
-              <em />
-              <button>
-                <I.Hand />
-              </button>
-              <em />
-              <button onClick={() => setPlaying(!playing)}>
-                {playing ? <I.Pause /> : <I.Play />}
-              </button>
-              <button
-                title="Frame model"
-                onClick={() => setFrameRequest((value) => value + 1)}
-              >
-                <I.Scan />
-              </button>
+              <CompositionTools
+                tool={tool}
+                project={project}
+                update={update}
+                onSelect={setSelected}
+              />
+              <div className="canvasControls">
+                <button onClick={() => setZoom(zoom - 5)}>
+                  <I.Minus />
+                </button>
+                <b>{zoom}%</b>
+                <button onClick={() => setZoom(zoom + 5)}>
+                  <I.Plus />
+                </button>
+                <em />
+                <button>
+                  <I.Hand />
+                </button>
+                <em />
+                <button onClick={() => setPlaying(!playing)}>
+                  {playing ? <I.Pause /> : <I.Play />}
+                </button>
+                <button
+                  title="Frame model"
+                  onClick={() => setFrameRequest((value) => value + 1)}
+                >
+                  <I.Scan />
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-        <Inspector
+          <Inspector
+            project={project}
+            layer={selected}
+            frame={frame}
+            update={update}
+            mode={transformMode}
+            setMode={setTransformMode}
+          />
+        </section>
+        <Timeline
           project={project}
-          layer={selected}
           frame={frame}
+          playing={playing}
+          selectedId={selectedId}
+          autoKey={autoKey}
           update={update}
-          mode={transformMode}
-          setMode={setTransformMode}
+          onFrame={setFrame}
+          onPlay={setPlaying}
+          onSelect={setSelected}
+          onAutoKey={setAutoKey}
+          onResizeStart={resizeTimeline}
         />
-      </section>
-      <Timeline
-        project={project}
-        frame={frame}
-        playing={playing}
-        selectedId={selectedId}
-        autoKey={autoKey}
-        update={update}
-        onFrame={setFrame}
-        onPlay={setPlaying}
-        onSelect={setSelected}
-        onAutoKey={setAutoKey}
-        onResizeStart={resizeTimeline}
-      />
-      {exporting && (
-        <ExportDialog project={project} onClose={() => setExporting(false)} />
-      )}
+        {exporting && (
+          <ExportDialog project={project} onClose={() => setExporting(false)} />
+        )}
       </main>
       {testingTemplate && (
         <UserPreview
@@ -703,6 +735,230 @@ export function App() {
         />
       )}
     </>
+  );
+}
+
+function VideoEditorWorkspace({
+  videoProject,
+  project,
+  frame,
+  playing,
+  onFrame,
+  onPlay,
+  onSelectScene,
+  onAddScene,
+  onDuplicateScene,
+  onDeleteScene,
+  onOpenScene,
+  onSave,
+}: {
+  videoProject: VideoProject;
+  project: TemplateProject;
+  frame: number;
+  playing: boolean;
+  onFrame: (frame: number) => void;
+  onPlay: (playing: boolean) => void;
+  onSelectScene: (sceneId: string) => void;
+  onAddScene: () => void;
+  onDuplicateScene: () => void;
+  onDeleteScene: () => void;
+  onOpenScene: () => void;
+  onSave: () => void;
+}) {
+  const scenes = [...videoProject.scenes].sort((a, b) => a.order - b.order),
+    activeScene =
+      scenes.find((scene) => scene.id === videoProject.activeSceneId) ??
+      scenes[0],
+    totalFrames = scenes.reduce(
+      (sum, scene) => sum + scene.composition.canvas.durationInFrames,
+      0,
+    ),
+    framesBeforeActive = scenes
+      .slice(
+        0,
+        scenes.findIndex((scene) => scene.id === activeScene.id),
+      )
+      .reduce(
+        (sum, scene) => sum + scene.composition.canvas.durationInFrames,
+        0,
+      ),
+    masterFrame = framesBeforeActive + frame;
+  return (
+    <main className="videoEditorWorkspace">
+      <header className="videoEditorHeader">
+        <div className="videoProjectIdentity">
+          <I.Clapperboard />
+          <div>
+            <b>{videoProject.name}</b>
+            <small>
+              {scenes.length} scene{scenes.length === 1 ? "" : "s"} ·{" "}
+              {formatTimecode(totalFrames, videoProject.canvas.fps)}
+            </small>
+          </div>
+        </div>
+        <div className="actions">
+          <button onClick={onOpenScene}>
+            <I.SquarePen /> Open Scene Editor
+          </button>
+          <button className="primary" onClick={onSave}>
+            <I.Save /> Save Video Project
+          </button>
+        </div>
+      </header>
+      <section className="videoEditorBody">
+        <aside className="sceneBin">
+          <div className="sceneBinHead">
+            <div>
+              <h2>Scenes</h2>
+              <small>Storyboard</small>
+            </div>
+            <button title="Add scene" onClick={onAddScene}>
+              <I.Plus />
+            </button>
+          </div>
+          <div className="sceneCards">
+            {scenes.map((scene, index) => (
+              <button
+                key={scene.id}
+                className={`sceneCard ${scene.id === activeScene.id ? "active" : ""}`}
+                onClick={() => onSelectScene(scene.id)}
+                onDoubleClick={onOpenScene}
+              >
+                <div
+                  className={`sceneThumbnail ${bgClass(scene.composition.background.preset)}`}
+                  style={backgroundStyle(scene.composition, 0)}
+                >
+                  {scene.thumbnailDataUrl ||
+                  scene.composition.thumbnailDataUrl ? (
+                    <img
+                      src={
+                        scene.thumbnailDataUrl ??
+                        scene.composition.thumbnailDataUrl
+                      }
+                      alt=""
+                    />
+                  ) : (
+                    <I.Box />
+                  )}
+                  <span>{index + 1}</span>
+                </div>
+                <div className="sceneCardInfo">
+                  <b>{scene.name}</b>
+                  <small>
+                    {formatTimecode(
+                      scene.composition.canvas.durationInFrames,
+                      scene.composition.canvas.fps,
+                    )}
+                  </small>
+                </div>
+                <I.ChevronRight />
+              </button>
+            ))}
+          </div>
+          <div className="sceneActions">
+            <button onClick={onDuplicateScene}>
+              <I.Copy /> Duplicate
+            </button>
+            <button
+              className="danger"
+              disabled={scenes.length === 1}
+              onClick={onDeleteScene}
+            >
+              <I.Trash2 /> Delete
+            </button>
+          </div>
+        </aside>
+        <section className="masterPreviewPanel">
+          <div className="masterPreviewHead">
+            <div>
+              <small>SELECTED SCENE</small>
+              <h2>{activeScene.name}</h2>
+            </div>
+            <button onClick={onOpenScene}>
+              <I.SquarePen /> Edit Scene
+            </button>
+          </div>
+          <div
+            className={`masterPreviewStage ${bgClass(project.background.preset)}`}
+            style={backgroundStyle(project, frame)}
+          >
+            <div className="canvasGlow" />
+            {project.model?.assetId ? (
+              isLayerActive(project, "phone", frame) && (
+                <SceneCanvas
+                  project={project}
+                  frame={frame}
+                  autoFrame={false}
+                  cameraControls={false}
+                />
+              )
+            ) : (
+              <Phone frame={frame} project={project} />
+            )}
+            <PreviewOverlays project={project} frame={frame} />
+          </div>
+          <div className="masterPreviewControls">
+            <button onClick={() => onPlay(!playing)}>
+              {playing ? <I.Pause /> : <I.Play />}
+            </button>
+            <input
+              type="range"
+              min="0"
+              max={project.canvas.durationInFrames - 1}
+              value={frame}
+              onChange={(event) => onFrame(Number(event.target.value))}
+            />
+            <b>
+              {formatTimecode(frame, project.canvas.fps)} /{" "}
+              {formatTimecode(
+                project.canvas.durationInFrames,
+                project.canvas.fps,
+              )}
+            </b>
+          </div>
+        </section>
+      </section>
+      <section className="masterTimelinePanel">
+        <div className="masterTimelineHead">
+          <div>
+            <b>Master Timeline</b>
+            <small>Scene assembly</small>
+          </div>
+          <span>
+            {formatTimecode(masterFrame, videoProject.canvas.fps)} /{" "}
+            {formatTimecode(totalFrames, videoProject.canvas.fps)}
+          </span>
+        </div>
+        <div className="masterTimeline">
+          <div
+            className="masterPlayhead"
+            style={{
+              left: `${(masterFrame / Math.max(1, totalFrames)) * 100}%`,
+            }}
+          />
+          {scenes.map((scene, index) => (
+            <button
+              key={scene.id}
+              className={`masterSceneClip ${scene.id === activeScene.id ? "active" : ""}`}
+              style={{
+                width: `${(scene.composition.canvas.durationInFrames / totalFrames) * 100}%`,
+              }}
+              onClick={() => onSelectScene(scene.id)}
+              onDoubleClick={onOpenScene}
+            >
+              <span>Scene {index + 1}</span>
+              <b>{scene.name}</b>
+              <small>
+                {formatTimecode(
+                  scene.composition.canvas.durationInFrames,
+                  scene.composition.canvas.fps,
+                )}
+              </small>
+            </button>
+          ))}
+        </div>
+      </section>
+    </main>
   );
 }
 
@@ -1482,10 +1738,7 @@ function Timeline({
       const target = event.target as HTMLElement | null;
       if (target?.matches("input, textarea, select, [contenteditable=true]"))
         return;
-      if (
-        (event.ctrlKey || event.metaKey) &&
-        event.key.toLowerCase() === "a"
-      ) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
         const all = project.keyframeTracks.flatMap((track) =>
           track.keyframes.map((keyframe) => ({
             trackId: track.id,
