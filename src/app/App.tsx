@@ -85,8 +85,57 @@ export function App() {
       const stored = Number(
         localStorage.getItem("renderlaunch-timeline-height"),
       );
-      return Number.isFinite(stored) && stored >= 180 ? stored : 266;
+      return clamp(
+        Number.isFinite(stored) && stored >= 180 ? stored : 266,
+        180,
+        Math.max(180, Math.floor(window.innerHeight * 0.4)),
+      );
+    }),
+    compositionViewport = useRef<HTMLDivElement>(null),
+    [compositionSize, setCompositionSize] = useState({
+      width: 640,
+      height: 360,
     });
+  useLayoutEffect(() => {
+    const viewport = compositionViewport.current;
+    if (!viewport) return;
+    const fitComposition = (width: number, height: number) => {
+      const availableWidth = Math.max(1, width - 2),
+        availableHeight = Math.max(1, height - 2),
+        scale = Math.min(availableWidth / 1280, availableHeight / 720),
+        next = {
+          width: Math.floor(1280 * scale),
+          height: Math.floor(720 * scale),
+        };
+      setCompositionSize((current) =>
+        current.width === next.width && current.height === next.height
+          ? current
+          : next,
+      );
+    };
+    const observer = new ResizeObserver(([entry]) =>
+      fitComposition(entry.contentRect.width, entry.contentRect.height),
+    );
+    observer.observe(viewport);
+    const style = getComputedStyle(viewport);
+    fitComposition(
+      viewport.clientWidth -
+        parseFloat(style.paddingLeft) -
+        parseFloat(style.paddingRight),
+      viewport.clientHeight -
+        parseFloat(style.paddingTop) -
+        parseFloat(style.paddingBottom),
+    );
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    const enforceTimelineLimit = () =>
+      setTimelineHeight((height) =>
+        Math.min(height, Math.max(180, Math.floor(window.innerHeight * 0.4))),
+      );
+    window.addEventListener("resize", enforceTimelineLimit);
+    return () => window.removeEventListener("resize", enforceTimelineLimit);
+  }, []);
   const resizeTimeline = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const handle = event.currentTarget,
@@ -100,7 +149,7 @@ export function App() {
         clamp(
           startHeight + startY - pointerEvent.clientY,
           180,
-          Math.max(180, window.innerHeight - 348),
+          Math.max(180, Math.floor(window.innerHeight * 0.4)),
         ),
       );
     const end = () => {
@@ -362,153 +411,160 @@ export function App() {
             )}
           </div>
         </aside>
-        <div
-          className={`workspace ${bgClass(project.background.preset)}`}
-          style={backgroundStyle(project, frame)}
-        >
-          <div className="canvasGlow" />
-          {isLayerActive(project, "phone", frame) && project.model?.assetId ? (
-            <SceneCanvas
+        <div className="compositionViewport" ref={compositionViewport}>
+          <div
+            className={`workspace ${bgClass(project.background.preset)}`}
+            style={{
+              ...backgroundStyle(project, frame),
+              width: compositionSize.width,
+              height: compositionSize.height,
+            }}
+          >
+            <div className="canvasGlow" />
+            {isLayerActive(project, "phone", frame) &&
+            project.model?.assetId ? (
+              <SceneCanvas
+                project={project}
+                frame={frame}
+                frameRequest={frameRequest}
+                autoFrame={
+                  Boolean(project.model?.assetId) &&
+                  project.camera?.framedAssetId !== project.model?.assetId
+                }
+                editable={selectedId === "phone" && !selected.locked}
+                mode={transformMode}
+                onTransform={(value) =>
+                  update((d) => {
+                    if (d.model && autoKey) {
+                      const deviceId =
+                        d.layers.find((layer) => layer.type === "device")?.id ??
+                        "phone";
+                      if (transformMode === "translate")
+                        value.position.forEach((axisValue, index) =>
+                          setNumericKeyframe(
+                            d,
+                            deviceId,
+                            `device.position.${["x", "y", "z"][index]}` as
+                              | "device.position.x"
+                              | "device.position.y"
+                              | "device.position.z",
+                            frame,
+                            axisValue,
+                          ),
+                        );
+                      else if (transformMode === "rotate")
+                        value.rotation.forEach((axisValue, index) =>
+                          setNumericKeyframe(
+                            d,
+                            deviceId,
+                            `device.rotation.${["x", "y", "z"][index]}` as
+                              | "device.rotation.x"
+                              | "device.rotation.y"
+                              | "device.rotation.z",
+                            frame,
+                            axisValue,
+                          ),
+                        );
+                      else
+                        setNumericKeyframe(
+                          d,
+                          deviceId,
+                          "device.scale",
+                          frame,
+                          Math.max(0.01, value.scale),
+                        );
+                    } else if (d.model) {
+                      d.model.position = value.position;
+                      d.model.rotation = value.rotation;
+                      d.model.scale = Math.max(0.01, value.scale);
+                    }
+                  })
+                }
+                onCamera={(position, target, reason) =>
+                  update((d) => {
+                    d.camera ??= {
+                      position: [0, 0.6, 4],
+                      target: [0, 0, 0],
+                      fov: 35,
+                      defaultPosition: [0, 0.6, 4],
+                      defaultTarget: [0, 0, 0],
+                    };
+                    if (autoKey && reason === "interaction") {
+                      position.forEach((value, axis) =>
+                        setNumericKeyframe(
+                          d,
+                          "camera",
+                          `camera.position.${(["x", "y", "z"] as const)[axis]}`,
+                          frame,
+                          value,
+                        ),
+                      );
+                      target.forEach((value, axis) =>
+                        setNumericKeyframe(
+                          d,
+                          "camera",
+                          `camera.target.${(["x", "y", "z"] as const)[axis]}`,
+                          frame,
+                          value,
+                        ),
+                      );
+                    } else {
+                      d.camera.position = position;
+                      d.camera.target = target;
+                    }
+                    if (reason === "frame" && d.model?.assetId) {
+                      d.camera.framedAssetId = d.model.assetId;
+                    }
+                  })
+                }
+              />
+            ) : (
+              isLayerActive(project, "phone", frame) && (
+                <div className={selectedId === "phone" ? "selectionBox" : ""}>
+                  <Phone frame={frame} project={project} />
+                  {selectedId === "phone" &&
+                    [0, 1, 2, 3].map((i) => (
+                      <i className={`handle h${i}`} key={i} />
+                    ))}
+                </div>
+              )
+            )}
+            <OverlayStage
               project={project}
               frame={frame}
-              frameRequest={frameRequest}
-              autoFrame={
-                Boolean(project.model?.assetId) &&
-                project.camera?.framedAssetId !== project.model?.assetId
-              }
-              editable={selectedId === "phone" && !selected.locked}
-              mode={transformMode}
-              onTransform={(value) =>
-                update((d) => {
-                  if (d.model && autoKey) {
-                    const deviceId =
-                      d.layers.find((layer) => layer.type === "device")?.id ??
-                      "phone";
-                    if (transformMode === "translate")
-                      value.position.forEach((axisValue, index) =>
-                        setNumericKeyframe(
-                          d,
-                          deviceId,
-                          `device.position.${["x", "y", "z"][index]}` as
-                            | "device.position.x"
-                            | "device.position.y"
-                            | "device.position.z",
-                          frame,
-                          axisValue,
-                        ),
-                      );
-                    else if (transformMode === "rotate")
-                      value.rotation.forEach((axisValue, index) =>
-                        setNumericKeyframe(
-                          d,
-                          deviceId,
-                          `device.rotation.${["x", "y", "z"][index]}` as
-                            | "device.rotation.x"
-                            | "device.rotation.y"
-                            | "device.rotation.z",
-                          frame,
-                          axisValue,
-                        ),
-                      );
-                    else
-                      setNumericKeyframe(
-                        d,
-                        deviceId,
-                        "device.scale",
-                        frame,
-                        Math.max(0.01, value.scale),
-                      );
-                  } else if (d.model) {
-                    d.model.position = value.position;
-                    d.model.rotation = value.rotation;
-                    d.model.scale = Math.max(0.01, value.scale);
-                  }
-                })
-              }
-              onCamera={(position, target, reason) =>
-                update((d) => {
-                  d.camera ??= {
-                    position: [0, 0.6, 4],
-                    target: [0, 0, 0],
-                    fov: 35,
-                    defaultPosition: [0, 0.6, 4],
-                    defaultTarget: [0, 0, 0],
-                  };
-                  if (autoKey && reason === "interaction") {
-                    position.forEach((value, axis) =>
-                      setNumericKeyframe(
-                        d,
-                        "camera",
-                        `camera.position.${(["x", "y", "z"] as const)[axis]}`,
-                        frame,
-                        value,
-                      ),
-                    );
-                    target.forEach((value, axis) =>
-                      setNumericKeyframe(
-                        d,
-                        "camera",
-                        `camera.target.${(["x", "y", "z"] as const)[axis]}`,
-                        frame,
-                        value,
-                      ),
-                    );
-                  } else {
-                    d.camera.position = position;
-                    d.camera.target = target;
-                  }
-                  if (reason === "frame" && d.model?.assetId) {
-                    d.camera.framedAssetId = d.model.assetId;
-                  }
-                })
-              }
+              selectedId={selectedId}
+              update={update}
+              onSelect={setSelected}
             />
-          ) : (
-            isLayerActive(project, "phone", frame) && (
-              <div className={selectedId === "phone" ? "selectionBox" : ""}>
-                <Phone frame={frame} project={project} />
-                {selectedId === "phone" &&
-                  [0, 1, 2, 3].map((i) => (
-                    <i className={`handle h${i}`} key={i} />
-                  ))}
-              </div>
-            )
-          )}
-          <OverlayStage
-            project={project}
-            frame={frame}
-            selectedId={selectedId}
-            update={update}
-            onSelect={setSelected}
-          />
-          <CompositionTools
-            tool={tool}
-            project={project}
-            update={update}
-            onSelect={setSelected}
-          />
-          <div className="canvasControls">
-            <button onClick={() => setZoom(zoom - 5)}>
-              <I.Minus />
-            </button>
-            <b>{zoom}%</b>
-            <button onClick={() => setZoom(zoom + 5)}>
-              <I.Plus />
-            </button>
-            <em />
-            <button>
-              <I.Hand />
-            </button>
-            <em />
-            <button onClick={() => setPlaying(!playing)}>
-              {playing ? <I.Pause /> : <I.Play />}
-            </button>
-            <button
-              title="Frame model"
-              onClick={() => setFrameRequest((value) => value + 1)}
-            >
-              <I.Scan />
-            </button>
+            <CompositionTools
+              tool={tool}
+              project={project}
+              update={update}
+              onSelect={setSelected}
+            />
+            <div className="canvasControls">
+              <button onClick={() => setZoom(zoom - 5)}>
+                <I.Minus />
+              </button>
+              <b>{zoom}%</b>
+              <button onClick={() => setZoom(zoom + 5)}>
+                <I.Plus />
+              </button>
+              <em />
+              <button>
+                <I.Hand />
+              </button>
+              <em />
+              <button onClick={() => setPlaying(!playing)}>
+                {playing ? <I.Pause /> : <I.Play />}
+              </button>
+              <button
+                title="Frame model"
+                onClick={() => setFrameRequest((value) => value + 1)}
+              >
+                <I.Scan />
+              </button>
+            </div>
           </div>
         </div>
         <Inspector

@@ -270,9 +270,20 @@ nav button.active {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  margin: 16px 14px;
+  margin: 0;
   border-radius: 15px;
   isolation: isolate;
+}
+.compositionViewport {
+  position: relative;
+  height: 100%;
+  max-height: 100%;
+  align-self: stretch;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px;
+  overflow: hidden;
+  background: var(--ui-bg);
 }
 .bg-lilac-glow {
   background: linear-gradient(135deg, #d9e8ff, #cbc9fa 55%, #f0d9ec);
@@ -1413,13 +1424,14 @@ footer > .tracks {
 }
 
 /* Shared composition viewport: camera and overlays keep identical framing. */
-.workspace {
-  width: calc(100% - 28px);
-  max-width: calc(177.7778vh - 650.6667px);
-  height: auto;
-  aspect-ratio: 16 / 9;
-  margin: 0;
-  place-self: center;
+.compositionViewport > .workspace {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: none;
+  max-height: none;
+  flex: none;
 }
 .preview {
   background: #f5f5f7;
