@@ -6,7 +6,9 @@ export const textAnimationPresetSchema = z.enum([
   "fade",
   "slide-up",
   "scale",
+  "typewriter",
 ]);
+export const textCursorStyleSchema = z.enum(["none", "line", "block"]);
 
 export const keyframeEasingSchema = z.enum([
   "linear",
@@ -180,8 +182,16 @@ export const layerSchema = z.object({
       entrance: textAnimationPresetSchema,
       exit: textAnimationPresetSchema,
       durationInFrames: z.number().int().min(1).max(300),
+      typingSpeed: z.number().min(1).max(120).default(18),
+      cursor: textCursorStyleSchema.default("line"),
     })
-    .default({ entrance: "none", exit: "none", durationInFrames: 18 }),
+    .default({
+      entrance: "none",
+      exit: "none",
+      durationInFrames: 18,
+      typingSpeed: 18,
+      cursor: "line",
+    }),
   media: z
     .object({
       assetId: z.string(),
@@ -310,5 +320,6 @@ export type TemplateProject = z.infer<typeof projectSchema>;
 export type ProjectLayer = z.infer<typeof layerSchema>;
 export type KeyframeTrack = z.infer<typeof keyframeTrackSchema>;
 export type TextAnimationPreset = z.infer<typeof textAnimationPresetSchema>;
+export type TextCursorStyle = z.infer<typeof textCursorStyleSchema>;
 export type NumericKeyframe = z.infer<typeof numericKeyframeSchema>;
 export type ColorKeyframe = z.infer<typeof colorKeyframeSchema>;

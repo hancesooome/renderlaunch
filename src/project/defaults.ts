@@ -30,6 +30,8 @@ export function createDefaultProject(): TemplateProject {
       entrance: "none" as const,
       exit: "none" as const,
       durationInFrames: 18,
+      typingSpeed: 18,
+      cursor: "line" as const,
     },
   };
   return {

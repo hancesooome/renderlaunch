@@ -10,7 +10,10 @@ import * as I from "lucide-react";
 import Moveable from "react-moveable";
 import type { LucideIcon } from "lucide-react";
 import { clamp, formatTimecode } from "../animation/frame";
-import { evaluateTextAnimation } from "../animation/textAnimation";
+import {
+  evaluateAnimatedText,
+  evaluateTextAnimation,
+} from "../animation/textAnimation";
 import {
   createColorTrack,
   createNumericTrack,
@@ -25,6 +28,7 @@ import type {
   ProjectLayer,
   TemplateProject,
   TextAnimationPreset,
+  TextCursorStyle,
 } from "../project/schema";
 import { useEditorStore } from "../store/editorStore";
 import type { TransformMode } from "../store/editorStore";
@@ -3612,7 +3616,7 @@ function OverlayItem({
           </span>
         )
       ) : (
-        layer.content
+        evaluateAnimatedText(layer, frame, project.canvas.fps)
       )}
     </div>
   );
@@ -4220,7 +4224,7 @@ function OverlayInspectorV2({
           <Select
             label="Entrance"
             value={layer.textAnimation.entrance}
-            options={["none", "fade", "slide-up", "scale"]}
+            options={["none", "fade", "slide-up", "scale", "typewriter"]}
             onChange={(value) =>
               mutate((item) => {
                 item.textAnimation.entrance = value as TextAnimationPreset;
@@ -4252,6 +4256,32 @@ function OverlayInspectorV2({
               }
             />
           </div>
+          {layer.textAnimation.entrance === "typewriter" && (
+            <>
+              <div className="row">
+                <label>Typing Speed</label>
+                <Field
+                  label="Characters/sec"
+                  value={layer.textAnimation.typingSpeed}
+                  onChange={(value) =>
+                    mutate((item) => {
+                      item.textAnimation.typingSpeed = Math.max(1, value);
+                    })
+                  }
+                />
+              </div>
+              <Select
+                label="Cursor"
+                value={layer.textAnimation.cursor}
+                options={["none", "line", "block"]}
+                onChange={(value) =>
+                  mutate((item) => {
+                    item.textAnimation.cursor = value as TextCursorStyle;
+                  })
+                }
+              />
+            </>
+          )}
         </Panel>
       )}
       {layer.type === "text" && (
@@ -4962,6 +4992,8 @@ function createOverlayLayer(
       entrance: "none",
       exit: "none",
       durationInFrames: 18,
+      typingSpeed: 18,
+      cursor: "line",
     },
   };
 }

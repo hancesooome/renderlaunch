@@ -91,6 +91,8 @@ export async function loadRecentProject(): Promise<TemplateProject | null> {
         entrance: "none",
         exit: "none",
         durationInFrames: 18,
+        typingSpeed: 18,
+        cursor: "line",
       },
     });
   return result.data;

@@ -44,3 +44,29 @@ export function evaluateTextAnimation(
   }
   return { opacity, translateY, scale };
 }
+
+export function evaluateAnimatedText(
+  layer: ProjectLayer,
+  frame: number,
+  fps: number,
+): string {
+  const content = layer.content ?? "";
+  if (layer.type !== "text" || layer.textAnimation.entrance !== "typewriter")
+    return content;
+  const elapsedFrames = Math.max(0, frame - layer.startFrame),
+    count = Math.min(
+      content.length,
+      Math.floor((elapsedFrames / Math.max(1, fps)) * layer.textAnimation.typingSpeed),
+    ),
+    typing = count < content.length,
+    blinkFrames = Math.max(1, Math.round(fps / 2)),
+    cursorVisible =
+      typing && Math.floor(elapsedFrames / blinkFrames) % 2 === 0,
+    cursor =
+      !cursorVisible || layer.textAnimation.cursor === "none"
+        ? ""
+        : layer.textAnimation.cursor === "block"
+          ? "█"
+          : "|";
+  return content.slice(0, count) + cursor;
+}

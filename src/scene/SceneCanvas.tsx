@@ -42,7 +42,10 @@ import {
   evaluateNumericProperty,
 } from "../animation/keyframes";
 import { useAssetUrl } from "../model/useAssetUrl";
-import { evaluateTextAnimation } from "../animation/textAnimation";
+import {
+  evaluateAnimatedText,
+  evaluateTextAnimation,
+} from "../animation/textAnimation";
 
 type TransformValue = {
   position: [number, number, number];
@@ -393,7 +396,7 @@ function Flat3DText({
               transform: `translateY(${textAnimation.translateY}px) scale(${textAnimation.scale})`,
             }}
           >
-            {layer.content}
+            {evaluateAnimatedText(layer, frame, project.canvas.fps)}
           </div>
         </Html>
       </group>
