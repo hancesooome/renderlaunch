@@ -1219,11 +1219,7 @@ function VideoEditorWorkspace({
                 : backgroundStyle(project, renderFrame)
             }
           >
-            {playback.transition ? (
-              <TransitionPreview transition={playback.transition} />
-            ) : (
-              <ScenePreviewLayer project={project} frame={renderFrame} />
-            )}
+            <MasterPlaybackVisual playback={playback} videoProject={normalizedVideoProject} playing={playing} />
             <MasterOverlays overlays={videoProject.globalOverlays} frame={shownMasterFrame} />
           </div>
           <div className="masterPreviewControls">
@@ -1637,11 +1633,17 @@ function ScenePreviewLayer({
   frame,
   style,
   onMediaFrameReady,
+  playing = false,
+  liveMediaPlayback = false,
+  onReady,
 }: {
   project: TemplateProject;
   frame: number;
   style?: React.CSSProperties;
   onMediaFrameReady?: (frame: number) => void;
+  playing?: boolean;
+  liveMediaPlayback?: boolean;
+  onReady?: () => void;
 }) {
   return (
     <div
@@ -1657,6 +1659,9 @@ function ScenePreviewLayer({
             autoFrame={false}
             cameraControls={false}
             onMediaFrameReady={onMediaFrameReady}
+            playing={playing}
+            liveMediaPlayback={liveMediaPlayback}
+            onReady={onReady}
           />
         )
       ) : (
@@ -1667,42 +1672,42 @@ function ScenePreviewLayer({
   );
 }
 
+function MasterPlaybackVisual({ playback, videoProject, playing }: { playback: ReturnType<typeof resolveMasterFrame>; videoProject: VideoProject; playing: boolean }) {
+  const [modelReady, setModelReady] = useState<Record<string, boolean>>({}), [mediaReady, setMediaReady] = useState<Record<string, boolean>>({});
+  const timeline = sceneStarts(videoProject), upcoming = timeline.scenes[playback.sceneIndex + 1], upcomingStart = timeline.starts[playback.sceneIndex + 1],
+    shouldPreload = !playback.transition && upcoming && playback.masterFrame >= upcomingStart - videoProject.canvas.fps;
+  const incomingReady = !playback.transition || ((!playback.transition.to.composition.model?.assetId || modelReady[playback.transition.to.id]) && (playback.transition.to.composition.screen?.mediaType !== "video" || mediaReady[playback.transition.to.id])),
+    transitionStyles = playback.transition && incomingReady ? transitionLayerStyles(playback.transition) : { from: { opacity: 1 } as React.CSSProperties, to: { opacity: 0 } as React.CSSProperties },
+    entries = playback.transition
+    ? [
+        { scene: playback.transition.from, frame: playback.transition.from.sourceStartFrame + playback.transition.fromFrame, style: transitionStyles.from, live: true },
+        { scene: playback.transition.to, frame: playback.transition.to.sourceStartFrame + playback.transition.toFrame, style: transitionStyles.to, live: true },
+      ]
+    : [
+        { scene: playback.scene, frame: playback.scene.sourceStartFrame + playback.localFrame, style: undefined, live: true },
+        ...(shouldPreload ? [{ scene: upcoming, frame: upcoming.sourceStartFrame, style: { opacity: 0, pointerEvents: "none" } as React.CSSProperties, live: false }] : []),
+      ];
+  return <>{entries.map((entry) => <ScenePreviewLayer key={entry.scene.id} project={entry.scene.composition} frame={entry.frame} style={entry.style} playing={playing && entry.live} liveMediaPlayback onReady={() => setModelReady((current) => current[entry.scene.id] ? current : { ...current, [entry.scene.id]: true })} onMediaFrameReady={() => setMediaReady((current) => current[entry.scene.id] ? current : { ...current, [entry.scene.id]: true })} />)}</>;
+}
+
+function transitionLayerStyles(transition: NonNullable<ReturnType<typeof resolveMasterFrame>["transition"]>) {
+  const type = transition.from.transitionToNext.type, progress = transition.progress;
+  let from: React.CSSProperties = { opacity: 1 - progress }, to: React.CSSProperties = { opacity: progress };
+  if (type === "fade-black") { from = { opacity: Math.max(0, 1 - progress * 2) }; to = { opacity: Math.max(0, progress * 2 - 1) }; }
+  else if (type === "slide") { from = { transform: `translateX(${-progress * 100}%)` }; to = { transform: `translateX(${(1 - progress) * 100}%)` }; }
+  else if (type === "zoom") { from = { opacity: 1 - progress, transform: `scale(${1 + progress * 0.12})` }; to = { opacity: progress, transform: `scale(${0.88 + progress * 0.12})` }; }
+  else if (type === "blur") { from = { opacity: 1 - progress, filter: `blur(${progress * 18}px)` }; to = { opacity: progress, filter: `blur(${(1 - progress) * 18}px)` }; }
+  return { from, to };
+}
+
 function TransitionPreview({
   transition,
 }: {
   transition: NonNullable<ReturnType<typeof resolveMasterFrame>["transition"]>;
 }) {
-  const type = transition.from.transitionToNext.type,
-    progress = transition.progress,
-    fromFrame = transition.from.sourceStartFrame + transition.fromFrame,
+  const fromFrame = transition.from.sourceStartFrame + transition.fromFrame,
     toFrame = transition.to.sourceStartFrame + transition.toFrame;
-  let fromStyle: React.CSSProperties = { opacity: 1 - progress },
-    toStyle: React.CSSProperties = { opacity: progress };
-  if (type === "fade-black") {
-    fromStyle = { opacity: Math.max(0, 1 - progress * 2) };
-    toStyle = { opacity: Math.max(0, progress * 2 - 1) };
-  } else if (type === "slide") {
-    fromStyle = { transform: `translateX(${-progress * 100}%)` };
-    toStyle = { transform: `translateX(${(1 - progress) * 100}%)` };
-  } else if (type === "zoom") {
-    fromStyle = {
-      opacity: 1 - progress,
-      transform: `scale(${1 + progress * 0.12})`,
-    };
-    toStyle = {
-      opacity: progress,
-      transform: `scale(${0.88 + progress * 0.12})`,
-    };
-  } else if (type === "blur") {
-    fromStyle = {
-      opacity: 1 - progress,
-      filter: `blur(${progress * 18}px)`,
-    };
-    toStyle = {
-      opacity: progress,
-      filter: `blur(${(1 - progress) * 18}px)`,
-    };
-  }
+  const styles = transitionLayerStyles(transition), fromStyle = styles.from, toStyle = styles.to;
   return (
     <>
       <ScenePreviewLayer

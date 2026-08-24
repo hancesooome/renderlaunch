@@ -63,6 +63,8 @@ type Props = {
   cameraControls?: boolean;
   onReady?: () => void;
   onMediaFrameReady?: (frame: number) => void;
+  playing?: boolean;
+  liveMediaPlayback?: boolean;
   onTransform?: (value: TransformValue) => void;
   selected3DLayerId?: string;
   on3DLayerTransform?: (layerId: string, value: TransformValue) => void;
@@ -83,6 +85,8 @@ export function SceneCanvas({
   cameraControls = true,
   onReady,
   onMediaFrameReady,
+  playing = false,
+  liveMediaPlayback = false,
   onTransform,
   selected3DLayerId,
   on3DLayerTransform,
@@ -204,6 +208,8 @@ export function SceneCanvas({
             onBounds={setBounds}
             onReady={onReady}
             onMediaFrameReady={onMediaFrameReady}
+            playing={playing}
+            liveMediaPlayback={liveMediaPlayback}
           />
           <Flat3DTextLayers
             project={project}
@@ -434,6 +440,8 @@ function LoadedModel({
   onBounds,
   onReady,
   onMediaFrameReady,
+  playing,
+  liveMediaPlayback,
 }: {
   url: string;
   screenUrl?: string;
@@ -445,6 +453,8 @@ function LoadedModel({
   onBounds: (bounds: NormalizedBounds) => void;
   onReady?: Props["onReady"];
   onMediaFrameReady?: Props["onMediaFrameReady"];
+  playing: boolean;
+  liveMediaPlayback: boolean;
 }) {
   const gltf = useGLTF(url),
     scene = useMemo(() => {
@@ -516,6 +526,8 @@ function LoadedModel({
       screenUrl,
       frame,
       onMediaFrameReady,
+      playing,
+      liveMediaPlayback,
     ),
     screenActive = Boolean(
       screenLayer?.visible &&
@@ -913,6 +925,8 @@ function useScreenTexture(
   url: string | undefined,
   frame: number,
   onFrameReady?: (frame: number) => void,
+  playing = false,
+  livePlayback = false,
 ) {
   const screen = project.screen,
     [texture, setTexture] = useState<Texture>(),
@@ -985,7 +999,6 @@ function useScreenTexture(
       if (!expectsVideo) onFrameReady?.(frame);
       return;
     }
-    element.pause();
     const screenId =
         project.layers.find((layer) => layer.type === "screen-media")?.id ??
         "media",
@@ -1001,6 +1014,14 @@ function useScreenTexture(
           element.duration) %
         element.duration,
       tolerance = 1 / project.canvas.fps / 3;
+    if (livePlayback && playing) {
+      if (Math.abs(element.currentTime - time) > 0.25) element.currentTime = time;
+      texture.needsUpdate = true;
+      onFrameReady?.(frame);
+      void element.play().catch(() => undefined);
+      return;
+    }
+    element.pause();
     if (Math.abs(element.currentTime - time) <= tolerance) {
       texture.needsUpdate = true;
       onFrameReady?.(frame);
@@ -1025,6 +1046,8 @@ function useScreenTexture(
     screen?.mediaType,
     texture,
     url,
+    playing,
+    livePlayback,
   ]);
   return texture;
 }
