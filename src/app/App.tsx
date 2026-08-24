@@ -61,6 +61,7 @@ export function App() {
   const project = useEditorStore((s) => s.project),
     videoProject = useEditorStore((s) => s.videoProject),
     frame = useEditorStore((s) => s.currentFrame),
+    masterFrame = useEditorStore((s) => s.masterFrame),
     playing = useEditorStore((s) => s.playing),
     selectedId = useEditorStore((s) => s.selectedLayerId),
     tool = useEditorStore((s) => s.activeTool),
@@ -71,6 +72,8 @@ export function App() {
     future = useEditorStore((s) => s.future);
   const update = useEditorStore((s) => s.updateProject),
     setFrame = useEditorStore((s) => s.setFrame),
+    setMasterFrame = useEditorStore((s) => s.setMasterFrame),
+    setPlaybackScope = useEditorStore((s) => s.setPlaybackScope),
     setPlaying = useEditorStore((s) => s.setPlaying),
     setSelected = useEditorStore((s) => s.setSelectedLayer),
     setTool = useEditorStore((s) => s.setActiveTool),
@@ -147,6 +150,9 @@ export function App() {
     );
     return () => observer.disconnect();
   }, [sceneEditorOpen]);
+  useEffect(() => {
+    setPlaybackScope(sceneEditorOpen ? "scene" : "master");
+  }, [sceneEditorOpen, setPlaybackScope]);
   useEffect(() => {
     const enforceTimelineLimit = () =>
       setTimelineHeight((height) =>
@@ -275,8 +281,10 @@ export function App() {
         videoProject={videoProject}
         project={project}
         frame={frame}
+        masterFrame={masterFrame}
         playing={playing}
         onFrame={setFrame}
+        onMasterFrame={setMasterFrame}
         onPlay={setPlaying}
         onSelectScene={selectScene}
         onAddScene={() => addScene()}
@@ -313,12 +321,15 @@ export function App() {
               );
               setPlaying(false);
               if (active)
-                setFrame(
-                  clamp(
-                    frame - active.sourceStartFrame,
-                    0,
-                    active.durationInFrames - 1,
-                  ),
+                setMasterFrame(
+                  videoProject.scenes
+                    .filter((scene) => scene.order < active.order)
+                    .reduce((sum, scene) => sum + scene.durationInFrames, 0) +
+                    clamp(
+                      frame - active.sourceStartFrame,
+                      0,
+                      active.durationInFrames - 1,
+                    ),
                 );
               setSceneEditorOpen(false);
             }}
@@ -765,8 +776,10 @@ function VideoEditorWorkspace({
   videoProject,
   project,
   frame,
+  masterFrame,
   playing,
   onFrame,
+  onMasterFrame,
   onPlay,
   onSelectScene,
   onAddScene,
@@ -781,8 +794,10 @@ function VideoEditorWorkspace({
   videoProject: VideoProject;
   project: TemplateProject;
   frame: number;
+  masterFrame: number;
   playing: boolean;
   onFrame: (frame: number) => void;
+  onMasterFrame: (frame: number) => void;
   onPlay: (playing: boolean) => void;
   onSelectScene: (sceneId: string) => void;
   onAddScene: () => void;
@@ -831,12 +846,10 @@ function VideoEditorWorkspace({
       .reduce((sum, scene) => sum + scene.durationInFrames, 0),
     visibleFrame = Math.min(frame, activeScene.durationInFrames - 1),
     renderFrame = activeScene.sourceStartFrame + visibleFrame,
-    masterFrame = framesBeforeActive + visibleFrame;
-  useEffect(() => {
-    if (frame < activeScene.durationInFrames) return;
-    onPlay(false);
-    onFrame(Math.max(0, activeScene.durationInFrames - 1));
-  }, [activeScene.durationInFrames, frame, onFrame, onPlay]);
+    expectedMasterFrame = framesBeforeActive + visibleFrame,
+    shownMasterFrame = Number.isFinite(masterFrame)
+      ? masterFrame
+      : expectedMasterFrame;
   useEffect(() => {
     const shortcuts = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -866,8 +879,7 @@ function VideoEditorWorkspace({
     for (const scene of scenes) {
       const end = cursor + scene.durationInFrames;
       if (nextMasterFrame < end || scene === scenes[scenes.length - 1]) {
-        onSelectScene(scene.id);
-        onFrame(clamp(nextMasterFrame - cursor, 0, scene.durationInFrames - 1));
+        onMasterFrame(nextMasterFrame);
         return;
       }
       cursor = end;
@@ -1056,7 +1068,9 @@ function VideoEditorWorkspace({
               min="0"
               max={activeScene.durationInFrames - 1}
               value={visibleFrame}
-              onChange={(event) => onFrame(Number(event.target.value))}
+              onChange={(event) =>
+                onMasterFrame(framesBeforeActive + Number(event.target.value))
+              }
             />
             <b>
               {formatTimecode(visibleFrame, project.canvas.fps)} /{" "}
@@ -1106,7 +1120,7 @@ function VideoEditorWorkspace({
               <I.Plus />
             </button>
             <span>
-              {formatTimecode(masterFrame, videoProject.canvas.fps)} /{" "}
+              {formatTimecode(shownMasterFrame, videoProject.canvas.fps)} /{" "}
               {formatTimecode(totalFrames, videoProject.canvas.fps)}
             </span>
           </div>
@@ -1131,7 +1145,7 @@ function VideoEditorWorkspace({
             <div
               className="masterPlayhead"
               style={{
-                left: `${(masterFrame / Math.max(1, totalFrames)) * 100}%`,
+                left: `${(shownMasterFrame / Math.max(1, totalFrames)) * 100}%`,
               }}
             />
             {scenes.map((scene, index) => {
@@ -1148,14 +1162,17 @@ function VideoEditorWorkspace({
                   onPointerDown={(event) => {
                     if ((event.target as HTMLElement).closest("button")) return;
                     const rect = event.currentTarget.getBoundingClientRect();
-                    onSelectScene(scene.id);
-                    onFrame(
-                      clamp(
-                        ((event.clientX - rect.left) / rect.width) *
-                          scene.durationInFrames,
-                        0,
-                        scene.durationInFrames - 1,
-                      ),
+                    const sceneStart = scenes
+                      .slice(0, index)
+                      .reduce((sum, item) => sum + item.durationInFrames, 0);
+                    onMasterFrame(
+                      sceneStart +
+                        clamp(
+                          ((event.clientX - rect.left) / rect.width) *
+                            scene.durationInFrames,
+                          0,
+                          scene.durationInFrames - 1,
+                        ),
                     );
                   }}
                   onDoubleClick={onOpenScene}

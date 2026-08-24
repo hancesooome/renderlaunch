@@ -15,12 +15,15 @@ import { clamp } from "../animation/frame";
 type SaveStatus = "loading" | "saved" | "unsaved" | "saving" | "error";
 type ProjectRecipe = (draft: TemplateProject) => void;
 export type TransformMode = "translate" | "rotate" | "scale";
+export type PlaybackScope = "master" | "scene";
 
 type EditorState = {
   project: TemplateProject;
   videoProject: VideoProject;
   currentFrame: number;
+  masterFrame: number;
   playing: boolean;
+  playbackScope: PlaybackScope;
   selectedLayerId: string;
   activeTool: string;
   zoom: number;
@@ -34,7 +37,9 @@ type EditorState = {
   hydrate: () => Promise<void>;
   updateProject: (recipe: ProjectRecipe) => void;
   setFrame: (frame: number) => void;
+  setMasterFrame: (frame: number) => void;
   advanceFrame: () => void;
+  setPlaybackScope: (scope: PlaybackScope) => void;
   setPlaying: (playing: boolean) => void;
   setSelectedLayer: (id: string) => void;
   setActiveTool: (tool: string) => void;
@@ -67,12 +72,46 @@ const normalizeSceneOrder = (scenes: VideoScene[]) =>
   scenes.forEach((scene, order) => {
     scene.order = order;
   });
+const clipDuration = (scene: VideoScene) =>
+  Number.isFinite(scene.durationInFrames)
+    ? scene.durationInFrames
+    : scene.composition.canvas.durationInFrames;
+const orderedScenes = (video: VideoProject) =>
+  [...video.scenes].sort((a, b) => a.order - b.order);
+const sceneMasterStart = (video: VideoProject, sceneId: string) => {
+  let start = 0;
+  for (const scene of orderedScenes(video)) {
+    if (scene.id === sceneId) return start;
+    start += clipDuration(scene);
+  }
+  return 0;
+};
+const resolveMasterFrame = (video: VideoProject, requestedFrame: number) => {
+  const scenes = orderedScenes(video),
+    totalFrames = scenes.reduce((sum, scene) => sum + clipDuration(scene), 0),
+    frame = Math.round(clamp(requestedFrame, 0, Math.max(0, totalFrames - 1)));
+  let start = 0;
+  for (const scene of scenes) {
+    const duration = clipDuration(scene);
+    if (frame < start + duration || scene === scenes[scenes.length - 1])
+      return {
+        scene,
+        localFrame: Math.round(clamp(frame - start, 0, duration - 1)),
+        masterFrame: frame,
+        totalFrames,
+      };
+    start += duration;
+  }
+  return { scene: scenes[0], localFrame: 0, masterFrame: 0, totalFrames };
+};
 
 export const useEditorStore = create<EditorState>((set, get) => ({
   videoProject: initialVideoProject,
   project: activeComposition(initialVideoProject),
   currentFrame: 126,
+  masterFrame: 126,
   playing: false,
+  playbackScope: "master",
   selectedLayerId: "phone",
   activeTool: "Model",
   zoom: 77,
@@ -87,9 +126,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     try {
       const restored = await loadRecentProject();
       const videoProject = restored ?? get().videoProject;
+      const resolved = resolveMasterFrame(videoProject, get().masterFrame);
       set({
         videoProject,
-        project: activeComposition(videoProject),
+        project: resolved.scene.composition,
+        currentFrame: resolved.localFrame,
+        masterFrame: resolved.masterFrame,
         hydrated: true,
         saveStatus: "saved",
       });
@@ -128,14 +170,98 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         clamp(frame, 0, state.project.canvas.durationInFrames - 1),
       ),
     })),
+  setMasterFrame: (frame) =>
+    set((state) => {
+      const resolved = resolveMasterFrame(state.videoProject, frame),
+        videoProject =
+          resolved.scene.id === state.videoProject.activeSceneId
+            ? state.videoProject
+            : produce(state.videoProject, (draft) => {
+                draft.activeSceneId = resolved.scene.id;
+              });
+      return {
+        masterFrame: resolved.masterFrame,
+        currentFrame: resolved.localFrame,
+        videoProject,
+        project: resolved.scene.composition,
+        selectedLayerId:
+          resolved.scene.id === state.videoProject.activeSceneId
+            ? state.selectedLayerId
+            : "phone",
+      };
+    }),
   advanceFrame: () =>
     set((state) => {
+      if (state.playbackScope === "master") {
+        const current = resolveMasterFrame(
+            state.videoProject,
+            state.masterFrame,
+          ),
+          nextFrame = state.masterFrame + 1;
+        if (nextFrame >= current.totalFrames) {
+          const first = resolveMasterFrame(state.videoProject, 0),
+            videoProject = produce(state.videoProject, (draft) => {
+              draft.activeSceneId = first.scene.id;
+            });
+          return {
+            masterFrame: 0,
+            currentFrame: 0,
+            playing: false,
+            videoProject,
+            project: first.scene.composition,
+            selectedLayerId: "phone",
+          };
+        }
+        const next = resolveMasterFrame(state.videoProject, nextFrame),
+          changedScene = next.scene.id !== state.videoProject.activeSceneId,
+          videoProject = changedScene
+            ? produce(state.videoProject, (draft) => {
+                draft.activeSceneId = next.scene.id;
+              })
+            : state.videoProject;
+        return {
+          masterFrame: next.masterFrame,
+          currentFrame: next.localFrame,
+          videoProject,
+          project: next.scene.composition,
+          selectedLayerId: changedScene ? "phone" : state.selectedLayerId,
+        };
+      }
       const next = state.currentFrame + 1;
       return next >= state.project.canvas.durationInFrames
         ? { currentFrame: 0, playing: false }
         : { currentFrame: next };
     }),
-  setPlaying: (playing) => set({ playing }),
+  setPlaybackScope: (playbackScope) => set({ playbackScope }),
+  setPlaying: (playing) =>
+    set((state) => {
+      if (!playing) return { playing: false };
+      if (state.playbackScope === "master") {
+        const current = resolveMasterFrame(
+          state.videoProject,
+          state.masterFrame,
+        );
+        if (state.masterFrame >= current.totalFrames - 1) {
+          const first = resolveMasterFrame(state.videoProject, 0),
+            videoProject = produce(state.videoProject, (draft) => {
+              draft.activeSceneId = first.scene.id;
+            });
+          return {
+            playing: true,
+            masterFrame: 0,
+            currentFrame: 0,
+            videoProject,
+            project: first.scene.composition,
+            selectedLayerId: "phone",
+          };
+        }
+      } else if (
+        state.currentFrame >=
+        state.project.canvas.durationInFrames - 1
+      )
+        return { playing: true, currentFrame: 0 };
+      return { playing: true };
+    }),
   setSelectedLayer: (selectedLayerId) => set({ selectedLayerId }),
   setActiveTool: (activeTool) => set({ activeTool }),
   setZoom: (zoom) => set({ zoom: clamp(zoom, 30, 150) }),
@@ -168,6 +294,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         future: [],
         videoProject,
         project: activeComposition(videoProject),
+        masterFrame: sceneMasterStart(videoProject, sceneId),
         currentFrame: 0,
         playing: false,
         selectedLayerId: "phone",
@@ -211,6 +338,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         future: [],
         videoProject,
         project: activeComposition(videoProject),
+        masterFrame: sceneMasterStart(videoProject, copyId),
         currentFrame: 0,
         playing: false,
         selectedLayerId: "phone",
@@ -238,6 +366,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         future: [],
         videoProject,
         project: activeComposition(videoProject),
+        masterFrame: sceneMasterStart(videoProject, videoProject.activeSceneId),
         currentFrame: 0,
         playing: false,
         selectedLayerId: "phone",
@@ -254,6 +383,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return {
         videoProject,
         project: activeComposition(videoProject),
+        masterFrame: sceneMasterStart(videoProject, sceneId),
         currentFrame: 0,
         playing: false,
         selectedLayerId: "phone",
@@ -278,6 +408,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         future: [],
         videoProject,
         project: activeComposition(videoProject),
+        masterFrame:
+          sceneMasterStart(videoProject, videoProject.activeSceneId) +
+          state.currentFrame,
         saveStatus: "unsaved",
       };
     }),
@@ -337,6 +470,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         future: [],
         videoProject,
         project: activeComposition(videoProject),
+        masterFrame:
+          sceneMasterStart(videoProject, videoProject.activeSceneId) +
+          Math.min(state.currentFrame, duration - 1),
         currentFrame: Math.min(state.currentFrame, duration - 1),
         saveStatus: "unsaved",
       };
@@ -389,6 +525,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         future: [],
         videoProject,
         project: activeComposition(videoProject),
+        masterFrame: sceneMasterStart(videoProject, secondId),
         currentFrame: 0,
         playing: false,
         selectedLayerId: "phone",
