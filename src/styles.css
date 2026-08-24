@@ -148,13 +148,16 @@ button {
 .masterPanelResize.horizontal { top: 0; bottom: 0; width: 7px; cursor: ew-resize; }.masterPanelResize.horizontal.right { right: -4px; }.masterPanelResize.horizontal.left { left: -4px; }
 .masterPanelResize.vertical { top: -4px; left: 0; right: 0; height: 8px; cursor: ns-resize; }
 .masterPanelResize:hover { background: color-mix(in srgb, #168cff 55%, transparent); }
+.masterInspectorPanel > .masterPanelResize.horizontal.left { left: 0; width: 5px; background: transparent !important; }
 .masterWorkspaceV2 .masterPreviewPanel { padding: 10px 14px 8px; grid-template-rows: 34px minmax(0,1fr) 38px; gap: 7px; background: #111318; }
 .masterWorkspaceV2 .masterPreviewHead h2 { font-size: 11px; font-weight: 500; }.masterWorkspaceV2 .masterPreviewHead small { font-size: 7px; color: #737b88; }
 .masterWorkspaceV2 .masterPreviewHead button { min-height: 27px; padding: 0 8px; border-color: #343944; border-radius: 6px; background: #1b1f26; font-size: 9px; }.masterWorkspaceV2 .masterPreviewHead button svg { width: 12px; }
 .masterWorkspaceV2 .masterPreviewStage { border-radius: 7px; box-shadow: 0 10px 34px #0008; }
 .masterWorkspaceV2 .masterPreviewControls { width: min(760px,95%); gap: 9px; }.masterWorkspaceV2 .masterPreviewControls button { width: 28px; height: 28px; background: #20242b; }.masterWorkspaceV2 .masterPreviewControls b { min-width: 125px; font-size: 9px; }
-.masterInspectorPanel { position: relative; min-width: 0; min-height: 0; overflow-y: auto; border-left: 1px solid #30343c; background: #181b21; }
-.masterInspectorContent { display: grid; align-content: start; }
+.masterInspectorPanel { position: relative; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior-x: none; border-left: 0; background: #181b21; caret-color: transparent; }
+.masterInspectorPanel input,.masterInspectorPanel textarea { caret-color: #168cff; }
+.masterInspectorPanel > *:not(.masterPanelResize) { width: 100%; max-width: 100%; box-sizing: border-box; }
+.masterInspectorContent { min-width: 0; width: 100%; display: grid; align-content: start; overflow: hidden; }
 .inspectorSelection { min-width: 0; padding: 12px; display: grid; grid-template-columns: 32px minmax(0,1fr); align-items: center; gap: 9px; border-bottom: 1px solid #2c3038; }
 .inspectorSelection > span { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 7px; }.inspectorSelection > span svg { width: 16px; }.inspectorSelection .blue { color: #5ca9ff; background: #193d60; }.inspectorSelection .green { color: #56d5a0; background: #173f34; }.inspectorSelection .violet { color: #b794f6; background: #3b2a5e; }
 .inspectorSelection > div { min-width: 0; display: grid; gap: 3px; }.inspectorSelection small { color: #777f8b; font-size: 7px; letter-spacing: .08em; }.inspectorSelection b { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }

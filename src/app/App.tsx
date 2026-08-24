@@ -1355,7 +1355,7 @@ function PopulatedVideoEditorWorkspace({
             </b>
           </div>
         </section>
-        <aside className="masterInspectorPanel">
+        <aside ref={(node) => { if (node) node.scrollLeft = 0; }} className="masterInspectorPanel" onScroll={(event) => { if (event.currentTarget.scrollLeft) event.currentTarget.scrollLeft = 0; }}>
           <div className="masterPanelResize horizontal left" onPointerDown={(event) => resizeMasterPanel(event, "right")} />
           <div className="masterPanelTitle"><b>Inspector</b><I.SlidersHorizontal /></div>
           {selectedTimelineIds.length > 1 ? <div className="masterInspectorContent">
