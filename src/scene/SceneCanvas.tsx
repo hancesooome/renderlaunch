@@ -10,8 +10,8 @@ import { Canvas, useThree } from "@react-three/fiber";
 import {
   ContactShadows,
   Environment,
-  Html,
   OrbitControls,
+  Text as DreiText,
   TransformControls,
   useGLTF,
 } from "@react-three/drei";
@@ -371,6 +371,14 @@ function Flat3DText({
       scale: group.current.scale.x,
     });
   };
+  useEffect(() => {
+    window.addEventListener("pointerup", commit);
+    window.addEventListener("pointercancel", commit);
+    return () => {
+      window.removeEventListener("pointerup", commit);
+      window.removeEventListener("pointercancel", commit);
+    };
+  });
   return (
     <>
       <group
@@ -379,26 +387,26 @@ function Flat3DText({
         rotation={rotation.map(MathUtils.degToRad) as [number, number, number]}
         scale={scale}
       >
-        <Html transform center>
-          <div
-            className="flat3DText"
-            style={{
-              width: layer.transform2D.width,
-              minHeight: layer.transform2D.height,
-              fontFamily: layer.textStyle.fontFamily,
-              fontWeight: layer.textStyle.fontWeight,
-              fontSize,
-              color,
-              textAlign: layer.textStyle.align,
-              lineHeight: layer.textStyle.lineHeight,
-              letterSpacing,
-              opacity: opacity * textAnimation.opacity,
-              transform: `translateY(${textAnimation.translateY}px) scale(${textAnimation.scale})`,
-            }}
+        <group
+          position={[0, -textAnimation.translateY / 100, 0]}
+          scale={textAnimation.scale}
+        >
+          <DreiText
+            color={color}
+            fontSize={fontSize / 100}
+            maxWidth={layer.transform2D.width / 100}
+            lineHeight={layer.textStyle.lineHeight}
+            letterSpacing={letterSpacing / Math.max(fontSize, 1)}
+            textAlign={layer.textStyle.align}
+            anchorX="center"
+            anchorY="middle"
+            fillOpacity={opacity * textAnimation.opacity}
+            whiteSpace="normal"
+            overflowWrap="break-word"
           >
             {evaluateAnimatedText(layer, frame, project.canvas.fps)}
-          </div>
-        </Html>
+          </DreiText>
+        </group>
       </group>
       {selected && onTransform && (
         <TransformControls
