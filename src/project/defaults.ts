@@ -1,4 +1,4 @@
-import type { TemplateProject } from "./schema";
+import type { TemplateProject, VideoProject } from "./schema";
 
 export function createDefaultProject(): TemplateProject {
   const now = new Date().toISOString();
@@ -176,5 +176,29 @@ export function createDefaultProject(): TemplateProject {
     keyframeTracks: [],
     createdAt: now,
     updatedAt: now,
+  };
+}
+
+export function createDefaultVideoProject(): VideoProject {
+  const composition = createDefaultProject(),
+    sceneId = crypto.randomUUID();
+  return {
+    schemaVersion: 3,
+    id: composition.id,
+    name: composition.name,
+    canvas: { width: 1280, height: 720, fps: 30 },
+    scenes: [
+      {
+        id: sceneId,
+        name: "Scene 1",
+        order: 0,
+        composition,
+        createdAt: composition.createdAt,
+        updatedAt: composition.updatedAt,
+      },
+    ],
+    activeSceneId: sceneId,
+    createdAt: composition.createdAt,
+    updatedAt: composition.updatedAt,
   };
 }

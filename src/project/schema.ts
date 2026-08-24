@@ -308,6 +308,32 @@ export const projectSchema = z.object({
   updatedAt: z.string(),
 });
 
+export const videoSceneSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  order: z.number().int().nonnegative(),
+  thumbnailDataUrl: z.string().optional(),
+  composition: projectSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const videoProjectSchema = z.object({
+  schemaVersion: z.literal(3),
+  id: z.string().min(1),
+  name: z.string().min(1),
+  canvas: z.object({
+    width: z.literal(1280),
+    height: z.literal(720),
+    fps: z.literal(30),
+  }),
+  scenes: z.array(videoSceneSchema).min(1),
+  activeSceneId: z.string().min(1),
+  thumbnailDataUrl: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
 export function migrateProjectData(value: unknown): unknown {
   if (!value || typeof value !== "object") return value;
   const project = value as Record<string, unknown>;
@@ -316,7 +342,47 @@ export function migrateProjectData(value: unknown): unknown {
   return project;
 }
 
+export function migrateVideoProjectData(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.schemaVersion === 3) return candidate;
+  const migratedComposition = migrateProjectData(value) as Record<
+    string,
+    unknown
+  >;
+  if (migratedComposition.schemaVersion !== 2) return value;
+  const now = new Date().toISOString(),
+    projectId = String(migratedComposition.id ?? crypto.randomUUID()),
+    projectName = String(migratedComposition.name ?? "Untitled Launch Video"),
+    createdAt = String(migratedComposition.createdAt ?? now),
+    updatedAt = String(migratedComposition.updatedAt ?? now),
+    sceneId = `${projectId}-scene-1`;
+  return {
+    schemaVersion: 3,
+    id: projectId,
+    name: projectName,
+    canvas: { width: 1280, height: 720, fps: 30 },
+    scenes: [
+      {
+        id: sceneId,
+        name: "Scene 1",
+        order: 0,
+        thumbnailDataUrl: migratedComposition.thumbnailDataUrl,
+        composition: migratedComposition,
+        createdAt,
+        updatedAt,
+      },
+    ],
+    activeSceneId: sceneId,
+    thumbnailDataUrl: migratedComposition.thumbnailDataUrl,
+    createdAt,
+    updatedAt,
+  };
+}
+
 export type TemplateProject = z.infer<typeof projectSchema>;
+export type VideoScene = z.infer<typeof videoSceneSchema>;
+export type VideoProject = z.infer<typeof videoProjectSchema>;
 export type ProjectLayer = z.infer<typeof layerSchema>;
 export type KeyframeTrack = z.infer<typeof keyframeTrackSchema>;
 export type TextAnimationPreset = z.infer<typeof textAnimationPresetSchema>;
