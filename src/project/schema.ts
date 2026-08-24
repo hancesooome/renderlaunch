@@ -312,6 +312,8 @@ export const videoSceneSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   order: z.number().int().nonnegative(),
+  sourceStartFrame: z.number().int().nonnegative().default(0),
+  durationInFrames: z.number().int().positive().default(450),
   thumbnailDataUrl: z.string().optional(),
   composition: projectSchema,
   createdAt: z.string(),
@@ -345,7 +347,26 @@ export function migrateProjectData(value: unknown): unknown {
 export function migrateVideoProjectData(value: unknown): unknown {
   if (!value || typeof value !== "object") return value;
   const candidate = value as Record<string, unknown>;
-  if (candidate.schemaVersion === 3) return candidate;
+  if (candidate.schemaVersion === 3)
+    return {
+      ...candidate,
+      scenes: Array.isArray(candidate.scenes)
+        ? candidate.scenes.map((scene) => {
+            if (!scene || typeof scene !== "object") return scene;
+            const item = scene as Record<string, unknown>,
+              composition = item.composition as
+                Record<string, unknown> | undefined,
+              canvas = composition?.canvas as
+                Record<string, unknown> | undefined;
+            return {
+              ...item,
+              sourceStartFrame: item.sourceStartFrame ?? 0,
+              durationInFrames:
+                item.durationInFrames ?? canvas?.durationInFrames ?? 450,
+            };
+          })
+        : candidate.scenes,
+    };
   const migratedComposition = migrateProjectData(value) as Record<
     string,
     unknown
@@ -367,6 +388,10 @@ export function migrateVideoProjectData(value: unknown): unknown {
         id: sceneId,
         name: "Scene 1",
         order: 0,
+        sourceStartFrame: 0,
+        durationInFrames:
+          (migratedComposition.canvas as Record<string, unknown>)
+            ?.durationInFrames ?? 450,
         thumbnailDataUrl: migratedComposition.thumbnailDataUrl,
         composition: migratedComposition,
         createdAt,

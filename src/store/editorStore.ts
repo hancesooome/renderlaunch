@@ -47,6 +47,13 @@ type EditorState = {
   deleteScene: (sceneId: string) => void;
   selectScene: (sceneId: string) => void;
   renameScene: (sceneId: string, name: string) => void;
+  reorderScene: (sceneId: string, targetIndex: number) => void;
+  trimScene: (
+    sceneId: string,
+    sourceStartFrame: number,
+    durationInFrames: number,
+  ) => void;
+  splitScene: (sceneId: string, offsetFrame: number) => void;
   undo: () => void;
   redo: () => void;
   persist: () => Promise<void>;
@@ -147,6 +154,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             id: sceneId,
             name: composition.name,
             order: draft.scenes.length,
+            sourceStartFrame: 0,
+            durationInFrames: composition.canvas.durationInFrames,
             composition,
             createdAt: now,
             updatedAt: now,
@@ -186,6 +195,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             id: copyId,
             name: composition.name,
             order: sourceIndex + 1,
+            sourceStartFrame: source.sourceStartFrame,
+            durationInFrames: source.durationInFrames,
             thumbnailDataUrl: source.thumbnailDataUrl,
             composition,
             createdAt: now,
@@ -267,6 +278,112 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         future: [],
         videoProject,
         project: activeComposition(videoProject),
+        saveStatus: "unsaved",
+      };
+    }),
+  reorderScene: (sceneId, targetIndex) =>
+    set((state) => {
+      const sourceIndex = state.videoProject.scenes.findIndex(
+        (scene) => scene.id === sceneId,
+      );
+      if (sourceIndex < 0) return state;
+      const boundedTarget = clamp(
+        Math.round(targetIndex),
+        0,
+        state.videoProject.scenes.length - 1,
+      );
+      if (sourceIndex === boundedTarget) return state;
+      const now = new Date().toISOString(),
+        videoProject = produce(state.videoProject, (draft) => {
+          const [scene] = draft.scenes.splice(sourceIndex, 1);
+          draft.scenes.splice(boundedTarget, 0, scene);
+          normalizeSceneOrder(draft.scenes);
+          draft.updatedAt = now;
+        });
+      return {
+        past: [...state.past.slice(-49), state.videoProject],
+        future: [],
+        videoProject,
+        project: activeComposition(videoProject),
+        saveStatus: "unsaved",
+      };
+    }),
+  trimScene: (sceneId, sourceStartFrame, durationInFrames) =>
+    set((state) => {
+      const scene = state.videoProject.scenes.find(
+        (item) => item.id === sceneId,
+      );
+      if (!scene) return state;
+      const sourceDuration = scene.composition.canvas.durationInFrames,
+        start = Math.round(clamp(sourceStartFrame, 0, sourceDuration - 1)),
+        duration = Math.round(
+          clamp(durationInFrames, 1, sourceDuration - start),
+        );
+      if (
+        start === scene.sourceStartFrame &&
+        duration === scene.durationInFrames
+      )
+        return state;
+      const now = new Date().toISOString(),
+        videoProject = produce(state.videoProject, (draft) => {
+          const item = draft.scenes.find((value) => value.id === sceneId)!;
+          item.sourceStartFrame = start;
+          item.durationInFrames = duration;
+          item.updatedAt = now;
+          draft.updatedAt = now;
+        });
+      return {
+        past: [...state.past.slice(-49), state.videoProject],
+        future: [],
+        videoProject,
+        project: activeComposition(videoProject),
+        currentFrame: Math.min(state.currentFrame, duration - 1),
+        saveStatus: "unsaved",
+      };
+    }),
+  splitScene: (sceneId, offsetFrame) =>
+    set((state) => {
+      const sourceIndex = state.videoProject.scenes.findIndex(
+          (scene) => scene.id === sceneId,
+        ),
+        source = state.videoProject.scenes[sourceIndex],
+        split = Math.round(offsetFrame);
+      if (!source || split <= 0 || split >= source.durationInFrames)
+        return state;
+      const now = new Date().toISOString(),
+        secondId = crypto.randomUUID(),
+        videoProject = produce(state.videoProject, (draft) => {
+          const first = draft.scenes[sourceIndex],
+            composition = structuredClone(first.composition);
+          composition.id = crypto.randomUUID();
+          composition.name = `${first.name} Part 2`;
+          composition.createdAt = now;
+          composition.updatedAt = now;
+          first.durationInFrames = split;
+          first.updatedAt = now;
+          draft.scenes.splice(sourceIndex + 1, 0, {
+            id: secondId,
+            name: composition.name,
+            order: sourceIndex + 1,
+            sourceStartFrame: first.sourceStartFrame + split,
+            durationInFrames: source.durationInFrames - split,
+            thumbnailDataUrl: first.thumbnailDataUrl,
+            composition,
+            createdAt: now,
+            updatedAt: now,
+          });
+          normalizeSceneOrder(draft.scenes);
+          draft.activeSceneId = secondId;
+          draft.updatedAt = now;
+        });
+      return {
+        past: [...state.past.slice(-49), state.videoProject],
+        future: [],
+        videoProject,
+        project: activeComposition(videoProject),
+        currentFrame: 0,
+        playing: false,
+        selectedLayerId: "phone",
         saveStatus: "unsaved",
       };
     }),

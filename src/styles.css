@@ -278,18 +278,54 @@ button {
   color: var(--ui-muted);
   font-variant-numeric: tabular-nums;
 }
-.masterTimeline {
-  position: relative;
-  height: 125px;
+.masterTimelineTools {
   display: flex;
-  align-items: stretch;
-  padding-top: 18px;
-  overflow: hidden;
+  align-items: center;
+  gap: 7px;
+}
+.masterTimelineTools button {
+  height: 28px;
+  min-width: 28px;
+  padding: 0 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid var(--ui-border);
+  border-radius: 7px;
+}
+.masterTimelineTools button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.masterTimelineTools input {
+  width: 74px;
+  accent-color: var(--ui-accent);
+}
+.masterTimelineTools span {
+  min-width: 125px;
+  color: var(--ui-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.masterTimelineViewport {
+  height: 125px;
+  overflow-x: auto;
+  overflow-y: hidden;
   border: 1px solid var(--ui-border);
   border-radius: 9px;
   background: var(--ui-bg);
 }
+.masterTimeline {
+  position: relative;
+  height: 125px;
+  min-width: 100%;
+  display: flex;
+  align-items: stretch;
+  padding-top: 18px;
+}
 .masterSceneClip {
+  position: relative;
   min-width: 80px;
   padding: 12px;
   display: flex;
@@ -300,6 +336,12 @@ button {
   border-right: 2px solid var(--ui-bg);
   background: color-mix(in srgb, var(--ui-accent) 20%, var(--ui-surface));
   text-align: left;
+  cursor: grab;
+  user-select: none;
+  transition: background 0.15s;
+}
+.masterSceneClip:active {
+  cursor: grabbing;
 }
 .masterSceneClip.active {
   outline: 2px solid var(--ui-accent);
@@ -316,6 +358,45 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.masterTrimHandle {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.masterTrimHandle::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--ui-accent) 65%, transparent);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.masterSceneClip:hover .masterTrimHandle::after,
+.masterSceneClip.active .masterTrimHandle::after {
+  opacity: 1;
+}
+.masterTrimHandle.left {
+  left: 0;
+}
+.masterTrimHandle.left::after {
+  left: 2px;
+}
+.masterTrimHandle.right {
+  right: 0;
+}
+.masterTrimHandle.right::after {
+  right: 2px;
 }
 .masterPlayhead {
   position: absolute;

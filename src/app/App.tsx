@@ -82,7 +82,10 @@ export function App() {
     addScene = useEditorStore((s) => s.addScene),
     duplicateScene = useEditorStore((s) => s.duplicateScene),
     deleteScene = useEditorStore((s) => s.deleteScene),
-    selectScene = useEditorStore((s) => s.selectScene);
+    selectScene = useEditorStore((s) => s.selectScene),
+    reorderScene = useEditorStore((s) => s.reorderScene),
+    trimScene = useEditorStore((s) => s.trimScene),
+    splitScene = useEditorStore((s) => s.splitScene);
   const selected =
     project.layers.find((layer) => layer.id === selectedId) ??
     project.layers[0];
@@ -279,7 +282,16 @@ export function App() {
         onAddScene={() => addScene()}
         onDuplicateScene={() => duplicateScene()}
         onDeleteScene={() => deleteScene(videoProject.activeSceneId)}
-        onOpenScene={() => setSceneEditorOpen(true)}
+        onReorderScene={reorderScene}
+        onTrimScene={trimScene}
+        onSplitScene={() => splitScene(videoProject.activeSceneId, frame)}
+        onOpenScene={() => {
+          const active = videoProject.scenes.find(
+            (scene) => scene.id === videoProject.activeSceneId,
+          );
+          setFrame((active?.sourceStartFrame ?? 0) + frame);
+          setSceneEditorOpen(true);
+        }}
         onSave={() => void persist()}
       />
     );
@@ -296,7 +308,18 @@ export function App() {
             className="icon"
             aria-label="Back to video editor"
             onClick={() => {
+              const active = videoProject.scenes.find(
+                (scene) => scene.id === videoProject.activeSceneId,
+              );
               setPlaying(false);
+              if (active)
+                setFrame(
+                  clamp(
+                    frame - active.sourceStartFrame,
+                    0,
+                    active.durationInFrames - 1,
+                  ),
+                );
               setSceneEditorOpen(false);
             }}
           >
@@ -749,6 +772,9 @@ function VideoEditorWorkspace({
   onAddScene,
   onDuplicateScene,
   onDeleteScene,
+  onReorderScene,
+  onTrimScene,
+  onSplitScene,
   onOpenScene,
   onSave,
 }: {
@@ -762,15 +788,29 @@ function VideoEditorWorkspace({
   onAddScene: () => void;
   onDuplicateScene: () => void;
   onDeleteScene: () => void;
+  onReorderScene: (sceneId: string, targetIndex: number) => void;
+  onTrimScene: (
+    sceneId: string,
+    sourceStartFrame: number,
+    durationInFrames: number,
+  ) => void;
+  onSplitScene: () => void;
   onOpenScene: () => void;
   onSave: () => void;
 }) {
+  const [masterZoom, setMasterZoom] = useState(1),
+    [draggedSceneId, setDraggedSceneId] = useState<string>(),
+    [trimPreview, setTrimPreview] = useState<{
+      id: string;
+      sourceStartFrame: number;
+      durationInFrames: number;
+    }>();
   const scenes = [...videoProject.scenes].sort((a, b) => a.order - b.order),
     activeScene =
       scenes.find((scene) => scene.id === videoProject.activeSceneId) ??
       scenes[0],
     totalFrames = scenes.reduce(
-      (sum, scene) => sum + scene.composition.canvas.durationInFrames,
+      (sum, scene) => sum + scene.durationInFrames,
       0,
     ),
     framesBeforeActive = scenes
@@ -778,11 +818,111 @@ function VideoEditorWorkspace({
         0,
         scenes.findIndex((scene) => scene.id === activeScene.id),
       )
-      .reduce(
-        (sum, scene) => sum + scene.composition.canvas.durationInFrames,
-        0,
-      ),
-    masterFrame = framesBeforeActive + frame;
+      .reduce((sum, scene) => sum + scene.durationInFrames, 0),
+    visibleFrame = Math.min(frame, activeScene.durationInFrames - 1),
+    renderFrame = activeScene.sourceStartFrame + visibleFrame,
+    masterFrame = framesBeforeActive + visibleFrame;
+  useEffect(() => {
+    if (frame < activeScene.durationInFrames) return;
+    onPlay(false);
+    onFrame(Math.max(0, activeScene.durationInFrames - 1));
+  }, [activeScene.durationInFrames, frame, onFrame, onPlay]);
+  useEffect(() => {
+    const shortcuts = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.matches("input, textarea, select, [contenteditable=true]"))
+        return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
+        event.preventDefault();
+        onDuplicateScene();
+      } else if (event.key === "Delete" && scenes.length > 1) {
+        event.preventDefault();
+        onDeleteScene();
+      } else if (
+        event.key.toLowerCase() === "s" &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        visibleFrame > 0
+      ) {
+        event.preventDefault();
+        onSplitScene();
+      }
+    };
+    window.addEventListener("keydown", shortcuts);
+    return () => window.removeEventListener("keydown", shortcuts);
+  });
+  const seekMasterFrame = (nextMasterFrame: number) => {
+    let cursor = 0;
+    for (const scene of scenes) {
+      const end = cursor + scene.durationInFrames;
+      if (nextMasterFrame < end || scene === scenes[scenes.length - 1]) {
+        onSelectScene(scene.id);
+        onFrame(clamp(nextMasterFrame - cursor, 0, scene.durationInFrames - 1));
+        return;
+      }
+      cursor = end;
+    }
+  };
+  const beginTrim = (
+    event: React.PointerEvent<HTMLButtonElement>,
+    scene: (typeof scenes)[number],
+    edge: "left" | "right",
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const target = event.currentTarget,
+      timeline = target.closest<HTMLElement>(".masterTimeline")!,
+      timelineWidth = timeline.getBoundingClientRect().width,
+      startX = event.clientX,
+      originalStart = scene.sourceStartFrame,
+      originalDuration = scene.durationInFrames;
+    target.setPointerCapture(event.pointerId);
+    const move = (pointerEvent: globalThis.PointerEvent) => {
+      const delta = Math.round(
+        ((pointerEvent.clientX - startX) / Math.max(1, timelineWidth)) *
+          totalFrames,
+      );
+      if (edge === "left") {
+        const applied = Math.round(
+          clamp(delta, -originalStart, originalDuration - 1),
+        );
+        setTrimPreview({
+          id: scene.id,
+          sourceStartFrame: originalStart + applied,
+          durationInFrames: originalDuration - applied,
+        });
+      } else {
+        setTrimPreview({
+          id: scene.id,
+          sourceStartFrame: originalStart,
+          durationInFrames: Math.round(
+            clamp(
+              originalDuration + delta,
+              1,
+              scene.composition.canvas.durationInFrames - originalStart,
+            ),
+          ),
+        });
+      }
+    };
+    const end = () => {
+      target.removeEventListener("pointermove", move);
+      target.removeEventListener("pointerup", end);
+      target.removeEventListener("pointercancel", end);
+      setTrimPreview((preview) => {
+        if (preview?.id === scene.id)
+          onTrimScene(
+            scene.id,
+            preview.sourceStartFrame,
+            preview.durationInFrames,
+          );
+        return undefined;
+      });
+    };
+    target.addEventListener("pointermove", move);
+    target.addEventListener("pointerup", end);
+    target.addEventListener("pointercancel", end);
+  };
   return (
     <main className="videoEditorWorkspace">
       <header className="videoEditorHeader">
@@ -846,7 +986,7 @@ function VideoEditorWorkspace({
                   <b>{scene.name}</b>
                   <small>
                     {formatTimecode(
-                      scene.composition.canvas.durationInFrames,
+                      scene.durationInFrames,
                       scene.composition.canvas.fps,
                     )}
                   </small>
@@ -880,22 +1020,22 @@ function VideoEditorWorkspace({
           </div>
           <div
             className={`masterPreviewStage ${bgClass(project.background.preset)}`}
-            style={backgroundStyle(project, frame)}
+            style={backgroundStyle(project, renderFrame)}
           >
             <div className="canvasGlow" />
             {project.model?.assetId ? (
-              isLayerActive(project, "phone", frame) && (
+              isLayerActive(project, "phone", renderFrame) && (
                 <SceneCanvas
                   project={project}
-                  frame={frame}
+                  frame={renderFrame}
                   autoFrame={false}
                   cameraControls={false}
                 />
               )
             ) : (
-              <Phone frame={frame} project={project} />
+              <Phone frame={renderFrame} project={project} />
             )}
-            <PreviewOverlays project={project} frame={frame} />
+            <PreviewOverlays project={project} frame={renderFrame} />
           </div>
           <div className="masterPreviewControls">
             <button onClick={() => onPlay(!playing)}>
@@ -904,16 +1044,13 @@ function VideoEditorWorkspace({
             <input
               type="range"
               min="0"
-              max={project.canvas.durationInFrames - 1}
-              value={frame}
+              max={activeScene.durationInFrames - 1}
+              value={visibleFrame}
               onChange={(event) => onFrame(Number(event.target.value))}
             />
             <b>
-              {formatTimecode(frame, project.canvas.fps)} /{" "}
-              {formatTimecode(
-                project.canvas.durationInFrames,
-                project.canvas.fps,
-              )}
+              {formatTimecode(visibleFrame, project.canvas.fps)} /{" "}
+              {formatTimecode(activeScene.durationInFrames, project.canvas.fps)}
             </b>
           </div>
         </section>
@@ -924,38 +1061,132 @@ function VideoEditorWorkspace({
             <b>Master Timeline</b>
             <small>Scene assembly</small>
           </div>
-          <span>
-            {formatTimecode(masterFrame, videoProject.canvas.fps)} /{" "}
-            {formatTimecode(totalFrames, videoProject.canvas.fps)}
-          </span>
-        </div>
-        <div className="masterTimeline">
-          <div
-            className="masterPlayhead"
-            style={{
-              left: `${(masterFrame / Math.max(1, totalFrames)) * 100}%`,
-            }}
-          />
-          {scenes.map((scene, index) => (
+          <div className="masterTimelineTools">
             <button
-              key={scene.id}
-              className={`masterSceneClip ${scene.id === activeScene.id ? "active" : ""}`}
-              style={{
-                width: `${(scene.composition.canvas.durationInFrames / totalFrames) * 100}%`,
-              }}
-              onClick={() => onSelectScene(scene.id)}
-              onDoubleClick={onOpenScene}
+              title="Split selected scene at playhead"
+              disabled={
+                visibleFrame <= 0 ||
+                visibleFrame >= activeScene.durationInFrames
+              }
+              onClick={onSplitScene}
             >
-              <span>Scene {index + 1}</span>
-              <b>{scene.name}</b>
-              <small>
-                {formatTimecode(
-                  scene.composition.canvas.durationInFrames,
-                  scene.composition.canvas.fps,
-                )}
-              </small>
+              <I.Scissors /> Split
             </button>
-          ))}
+            <button
+              onClick={() =>
+                setMasterZoom((value) => Math.max(1, value - 0.25))
+              }
+            >
+              <I.Minus />
+            </button>
+            <input
+              aria-label="Master timeline zoom"
+              type="range"
+              min="1"
+              max="4"
+              step=".25"
+              value={masterZoom}
+              onChange={(event) => setMasterZoom(Number(event.target.value))}
+            />
+            <button
+              onClick={() =>
+                setMasterZoom((value) => Math.min(4, value + 0.25))
+              }
+            >
+              <I.Plus />
+            </button>
+            <span>
+              {formatTimecode(masterFrame, videoProject.canvas.fps)} /{" "}
+              {formatTimecode(totalFrames, videoProject.canvas.fps)}
+            </span>
+          </div>
+        </div>
+        <div className="masterTimelineViewport">
+          <div
+            className="masterTimeline"
+            style={{ width: `${masterZoom * 100}%` }}
+            onPointerDown={(event) => {
+              if ((event.target as HTMLElement).closest(".masterSceneClip"))
+                return;
+              const rect = event.currentTarget.getBoundingClientRect();
+              seekMasterFrame(
+                clamp(
+                  ((event.clientX - rect.left) / rect.width) * totalFrames,
+                  0,
+                  totalFrames - 1,
+                ),
+              );
+            }}
+          >
+            <div
+              className="masterPlayhead"
+              style={{
+                left: `${(masterFrame / Math.max(1, totalFrames)) * 100}%`,
+              }}
+            />
+            {scenes.map((scene, index) => {
+              const preview =
+                trimPreview?.id === scene.id ? trimPreview : scene;
+              return (
+                <div
+                  key={scene.id}
+                  draggable
+                  className={`masterSceneClip ${scene.id === activeScene.id ? "active" : ""}`}
+                  style={{
+                    width: `${(preview.durationInFrames / totalFrames) * 100}%`,
+                  }}
+                  onClick={() => onSelectScene(scene.id)}
+                  onPointerDown={(event) => {
+                    if ((event.target as HTMLElement).closest("button")) return;
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    onSelectScene(scene.id);
+                    onFrame(
+                      clamp(
+                        ((event.clientX - rect.left) / rect.width) *
+                          scene.durationInFrames,
+                        0,
+                        scene.durationInFrames - 1,
+                      ),
+                    );
+                  }}
+                  onDoubleClick={onOpenScene}
+                  onDragStart={(event) => {
+                    setDraggedSceneId(scene.id);
+                    event.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    if (draggedSceneId) onReorderScene(draggedSceneId, index);
+                    setDraggedSceneId(undefined);
+                  }}
+                  onDragEnd={() => setDraggedSceneId(undefined)}
+                >
+                  <button
+                    className="masterTrimHandle left"
+                    title="Trim scene start"
+                    onPointerDown={(event) => beginTrim(event, scene, "left")}
+                  />
+                  <span>Scene {index + 1}</span>
+                  <b>{scene.name}</b>
+                  <small>
+                    {formatTimecode(
+                      preview.durationInFrames,
+                      scene.composition.canvas.fps,
+                    )}
+                  </small>
+                  <button
+                    className="masterTrimHandle right"
+                    title="Trim scene end"
+                    onPointerDown={(event) => beginTrim(event, scene, "right")}
+                  />
+                </div>
+              );
+            })}
+          </div>
         </div>
       </section>
     </main>

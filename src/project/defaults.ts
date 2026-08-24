@@ -192,6 +192,8 @@ export function createDefaultVideoProject(): VideoProject {
         id: sceneId,
         name: "Scene 1",
         order: 0,
+        sourceStartFrame: 0,
+        durationInFrames: composition.canvas.durationInFrames,
         composition,
         createdAt: composition.createdAt,
         updatedAt: composition.updatedAt,
