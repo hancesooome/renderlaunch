@@ -899,6 +899,8 @@ function VideoEditorWorkspace({
     [masterTimelineHeight, setMasterTimelineHeight] = useState(() => Math.round(clamp(window.innerHeight * .38, 260, 460))),
     [draggedSceneId, setDraggedSceneId] = useState<string>(),
     [selectedAssetClipId, setSelectedAssetClipId] = useState<string>(),
+    [selectedTimelineIds, setSelectedTimelineIds] = useState<string[]>([]),
+    [timelineMarquee, setTimelineMarquee] = useState<{ left: number; top: number; width: number; height: number }>(),
     [rippleDelete, setRippleDelete] = useState(false),
     [selectedAudio, setSelectedAudio] = useState<{ trackId: string; clipId: string }>(),
     [selectedOverlayId, setSelectedOverlayId] = useState<string>(),
@@ -908,6 +910,7 @@ function VideoEditorWorkspace({
       sourceStartFrame: number;
       durationInFrames: number;
     }>();
+  const masterTimelinePanelRef = useRef<HTMLElement>(null);
   const addAudioClip = useEditorStore((state) => state.addAudioClip),
     updateAudioClip = useEditorStore((state) => state.updateAudioClip),
     deleteAudioClip = useEditorStore((state) => state.deleteAudioClip),
@@ -968,6 +971,16 @@ function VideoEditorWorkspace({
     : undefined;
   const selectedOverlay = videoProject.globalOverlays.find((overlay) => overlay.id === selectedOverlayId);
   const selectedAssetClip = unifiedTimelineTracks.flatMap((track) => track.clips).find((clip) => clip.id === selectedAssetClipId && clip.referenceType === "asset");
+  const selectTimelineClip = (id: string, additive = false) => setSelectedTimelineIds((current) => additive ? current.includes(id) ? current.filter((item) => item !== id) : [...current, id] : [id]);
+  const deleteTimelineSelection = () => {
+    selectedTimelineIds.forEach((selection) => {
+      const [kind, first, second] = selection.split(":");
+      if (kind === "asset") deleteTimelineAssetClip(first, rippleDelete);
+      else if (kind === "audio") deleteAudioClip(first, second);
+      else if (kind === "overlay") deleteGlobalOverlay(first);
+    });
+    setSelectedTimelineIds([]); setSelectedAssetClipId(undefined); setSelectedAudio(undefined); setSelectedOverlayId(undefined);
+  };
   const refreshAssetLibrary = async () => {
     const [assets, folders] = await Promise.all([listAssets(), listAssetFolders()]);
     setLibraryAssets(assets); setAssetFolders(folders);
@@ -1064,10 +1077,15 @@ function VideoEditorWorkspace({
       const target = event.target as HTMLElement | null;
       if (target?.matches("input, textarea, select, [contenteditable=true]"))
         return;
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+        event.preventDefault();
+        setSelectedTimelineIds(Array.from(masterTimelinePanelRef.current?.querySelectorAll<HTMLElement>("[data-timeline-clip-id]") ?? []).map((element) => element.dataset.timelineClipId!).filter(Boolean));
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
         event.preventDefault();
         if (selectedAssetClipId) duplicateTimelineAssetClip(selectedAssetClipId);
         else onDuplicateScene();
+      } else if ((event.key === "Delete" || event.key === "Backspace") && selectedTimelineIds.length) {
+        event.preventDefault(); deleteTimelineSelection();
       } else if (event.key === "Delete" && (selectedAssetClipId || scenes.length > 1)) {
         event.preventDefault();
         if (selectedAssetClipId) { deleteTimelineAssetClip(selectedAssetClipId, rippleDelete); setSelectedAssetClipId(undefined); }
@@ -1085,7 +1103,7 @@ function VideoEditorWorkspace({
     };
     window.addEventListener("keydown", shortcuts);
     return () => window.removeEventListener("keydown", shortcuts);
-  }, [activeScene.id, deleteTimelineAssetClip, duplicateTimelineAssetClip, onDeleteScene, onDuplicateScene, onSplitScene, rippleDelete, scenes.length, selectedAssetClip, selectedAssetClipId, shownMasterFrame, splitTimelineAssetClip, visibleFrame]);
+  }, [activeScene.id, deleteTimelineAssetClip, duplicateTimelineAssetClip, onDeleteScene, onDuplicateScene, onSplitScene, rippleDelete, scenes.length, selectedAssetClip, selectedAssetClipId, selectedTimelineIds, shownMasterFrame, splitTimelineAssetClip, visibleFrame]);
   const seekMasterFrame = (nextMasterFrame: number) => {
     let cursor = 0;
     for (const scene of scenes) {
@@ -1169,6 +1187,25 @@ function VideoEditorWorkspace({
     };
     const end = () => { target.removeEventListener("pointermove", move); target.removeEventListener("pointerup", end); target.removeEventListener("pointercancel", end); };
     target.addEventListener("pointermove", move); target.addEventListener("pointerup", end); target.addEventListener("pointercancel", end);
+  };
+  const beginTimelineMarquee = (event: React.PointerEvent<HTMLElement>) => {
+    if (event.button !== 0 || (event.target as HTMLElement).closest("[data-timeline-clip-id], button, input, select, .masterPanelResize")) return;
+    const panel = masterTimelinePanelRef.current;
+    if (!panel) return;
+    event.preventDefault();
+    const bounds = panel.getBoundingClientRect(), startX = event.clientX, startY = event.clientY,
+      toLocal = (x: number, y: number) => ({ x: x - bounds.left + panel.scrollLeft, y: y - bounds.top + panel.scrollTop });
+    if (!event.ctrlKey && !event.metaKey) setSelectedTimelineIds([]);
+    const additive = event.ctrlKey || event.metaKey, initial = additive ? selectedTimelineIds : [];
+    const move = (pointerEvent: globalThis.PointerEvent) => {
+      const start = toLocal(startX, startY), current = toLocal(pointerEvent.clientX, pointerEvent.clientY), left = Math.min(start.x, current.x), top = Math.min(start.y, current.y), width = Math.abs(current.x - start.x), height = Math.abs(current.y - start.y);
+      setTimelineMarquee({ left, top, width, height });
+      const selectionBounds = { left: Math.min(startX, pointerEvent.clientX), right: Math.max(startX, pointerEvent.clientX), top: Math.min(startY, pointerEvent.clientY), bottom: Math.max(startY, pointerEvent.clientY) };
+      const hits = Array.from(panel.querySelectorAll<HTMLElement>("[data-timeline-clip-id]")).filter((element) => { const rect = element.getBoundingClientRect(); return rect.right >= selectionBounds.left && rect.left <= selectionBounds.right && rect.bottom >= selectionBounds.top && rect.top <= selectionBounds.bottom; }).map((element) => element.dataset.timelineClipId!).filter(Boolean);
+      setSelectedTimelineIds([...new Set([...initial, ...hits])]);
+    };
+    const end = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", end); setTimelineMarquee(undefined); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", end, { once: true });
   };
   return (
     <main className="videoEditorWorkspace masterWorkspaceV2" style={{ "--master-left": `${masterLeftWidth}px`, "--master-right": `${masterRightWidth}px`, "--master-timeline": `${masterTimelineHeight}px` } as React.CSSProperties}>
@@ -1334,7 +1371,8 @@ function VideoEditorWorkspace({
           </div>}
         </aside>
       </section>
-      <section className="masterTimelinePanel">
+      <section ref={masterTimelinePanelRef} className="masterTimelinePanel" onPointerDown={beginTimelineMarquee}>
+        {timelineMarquee && <div className="masterTimelineMarquee" style={timelineMarquee} />}
         <div className="masterPanelResize vertical" onPointerDown={(event) => resizeMasterPanel(event, "timeline")} />
         <MasterAudioEngine
           tracks={videoProject.audioTracks}
@@ -1365,6 +1403,7 @@ function VideoEditorWorkspace({
               <I.Scissors /> Split
             </button>
             <button className={rippleDelete ? "active" : ""} title="Close the gap after deleting a media clip" onClick={() => setRippleDelete((value) => !value)}><I.MoveLeft /> Ripple</button>
+            <button title="Delete selected clips" disabled={!selectedTimelineIds.length} onClick={deleteTimelineSelection}><I.Trash2 /> {selectedTimelineIds.length || "Delete"}</button>
             <button
               onClick={() =>
                 setMasterZoom((value) => Math.max(1, value - 0.25))
@@ -1491,8 +1530,8 @@ function VideoEditorWorkspace({
             })}
           </div>
         </div>
-        <MasterAssetTimelineRow track={videoTimelineTrack} totalFrames={totalFrames} zoom={masterZoom} playhead={shownMasterFrame} selectedClipId={selectedAssetClipId} dragActive={dragTargetTrack === videoTimelineTrack.id} onDragEnter={() => setDragTargetTrack(videoTimelineTrack.id)} onDragLeave={() => setDragTargetTrack(undefined)} onDrop={(event) => void dropLibraryAsset(event, "video")} onSelect={(id) => { setSelectedAssetClipId(id); setSelectedAudio(undefined); setSelectedOverlayId(undefined); }} onChange={updateTimelineAssetClip} onDelete={(id) => { deleteTimelineAssetClip(id, rippleDelete); if (id === selectedAssetClipId) setSelectedAssetClipId(undefined); }} />
-        <MasterAssetTimelineRow track={imageTimelineTrack} totalFrames={totalFrames} zoom={masterZoom} playhead={shownMasterFrame} selectedClipId={selectedAssetClipId} dragActive={dragTargetTrack === imageTimelineTrack.id} onDragEnter={() => setDragTargetTrack(imageTimelineTrack.id)} onDragLeave={() => setDragTargetTrack(undefined)} onDrop={(event) => void dropLibraryAsset(event, "image")} onSelect={(id) => { setSelectedAssetClipId(id); setSelectedAudio(undefined); setSelectedOverlayId(undefined); }} onChange={updateTimelineAssetClip} onDelete={(id) => { deleteTimelineAssetClip(id, rippleDelete); if (id === selectedAssetClipId) setSelectedAssetClipId(undefined); }} />
+        <MasterAssetTimelineRow track={videoTimelineTrack} totalFrames={totalFrames} zoom={masterZoom} playhead={shownMasterFrame} selectedClipIds={selectedTimelineIds} dragActive={dragTargetTrack === videoTimelineTrack.id} onDragEnter={() => setDragTargetTrack(videoTimelineTrack.id)} onDragLeave={() => setDragTargetTrack(undefined)} onDrop={(event) => void dropLibraryAsset(event, "video")} onSelect={(id, additive) => { selectTimelineClip(`asset:${id}`, additive); setSelectedAssetClipId(id); setSelectedAudio(undefined); setSelectedOverlayId(undefined); }} onChange={updateTimelineAssetClip} onDelete={(id) => { deleteTimelineAssetClip(id, rippleDelete); setSelectedTimelineIds((items) => items.filter((item) => item !== `asset:${id}`)); if (id === selectedAssetClipId) setSelectedAssetClipId(undefined); }} />
+        <MasterAssetTimelineRow track={imageTimelineTrack} totalFrames={totalFrames} zoom={masterZoom} playhead={shownMasterFrame} selectedClipIds={selectedTimelineIds} dragActive={dragTargetTrack === imageTimelineTrack.id} onDragEnter={() => setDragTargetTrack(imageTimelineTrack.id)} onDragLeave={() => setDragTargetTrack(undefined)} onDrop={(event) => void dropLibraryAsset(event, "image")} onSelect={(id, additive) => { selectTimelineClip(`asset:${id}`, additive); setSelectedAssetClipId(id); setSelectedAudio(undefined); setSelectedOverlayId(undefined); }} onChange={updateTimelineAssetClip} onDelete={(id) => { deleteTimelineAssetClip(id, rippleDelete); setSelectedTimelineIds((items) => items.filter((item) => item !== `asset:${id}`)); if (id === selectedAssetClipId) setSelectedAssetClipId(undefined); }} />
         <div className="audioTimeline">
           {videoProject.audioTracks.map((track) => (
             <div className={`audioTrack timelineDropZone ${dragTargetTrack === `master-audio:${track.id}` ? "compatibleDrop" : ""}`} key={track.id} onDragOver={(event) => { if (event.dataTransfer.types.includes("application/x-renderlaunch-asset")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; setDragTargetTrack(`master-audio:${track.id}`); } }} onDragLeave={() => setDragTargetTrack(undefined)} onDrop={(event) => void dropLibraryAsset(event, "audio", track.id)}>
@@ -1526,8 +1565,9 @@ function VideoEditorWorkspace({
                       key={clip.id}
                       clip={clip}
                       totalFrames={totalFrames}
-                      selected={selectedAudio?.clipId === clip.id}
-                      onSelect={() => setSelectedAudio({ trackId: track.id, clipId: clip.id })}
+                      timelineId={`audio:${track.id}:${clip.id}`}
+                      selected={selectedTimelineIds.includes(`audio:${track.id}:${clip.id}`)}
+                      onSelect={(additive) => { selectTimelineClip(`audio:${track.id}:${clip.id}`, additive); setSelectedAudio({ trackId: track.id, clipId: clip.id }); setSelectedAssetClipId(undefined); setSelectedOverlayId(undefined); }}
                       onChange={(patch) => updateAudioClip(track.id, clip.id, patch)}
                     />
                   ))}
@@ -1546,8 +1586,8 @@ function VideoEditorWorkspace({
                   key={overlay.id}
                   overlay={overlay}
                   totalFrames={totalFrames}
-                  selected={overlay.id === selectedOverlayId}
-                  onSelect={() => { setSelectedOverlayId(overlay.id); setSelectedAudio(undefined); }}
+                  selected={selectedTimelineIds.includes(`overlay:${overlay.id}`)}
+                  onSelect={(additive) => { selectTimelineClip(`overlay:${overlay.id}`, additive); setSelectedOverlayId(overlay.id); setSelectedAudio(undefined); setSelectedAssetClipId(undefined); }}
                   onChange={(patch) => updateGlobalOverlay(overlay.id, patch)}
                 />
               ))}
@@ -1593,10 +1633,10 @@ function assetMediaKind(asset: Pick<StoredAsset, "type" | "name">): "image" | "v
   return "other";
 }
 
-function MasterAssetTimelineRow({ track, totalFrames, zoom, playhead, selectedClipId, dragActive, onDragEnter, onDragLeave, onDrop, onSelect, onChange, onDelete }: { track: TimelineTrack; totalFrames: number; zoom: number; playhead: number; selectedClipId?: string; dragActive: boolean; onDragEnter: () => void; onDragLeave: () => void; onDrop: (event: React.DragEvent<HTMLElement>) => void; onSelect: (clipId: string) => void; onChange: (clipId: string, patch: { startFrame?: number; sourceStartFrame?: number; durationInFrames?: number }) => void; onDelete: (clipId: string) => void }) {
+function MasterAssetTimelineRow({ track, totalFrames, zoom, playhead, selectedClipIds, dragActive, onDragEnter, onDragLeave, onDrop, onSelect, onChange, onDelete }: { track: TimelineTrack; totalFrames: number; zoom: number; playhead: number; selectedClipIds: string[]; dragActive: boolean; onDragEnter: () => void; onDragLeave: () => void; onDrop: (event: React.DragEvent<HTMLElement>) => void; onSelect: (clipId: string, additive: boolean) => void; onChange: (clipId: string, patch: { startFrame?: number; sourceStartFrame?: number; durationInFrames?: number }) => void; onDelete: (clipId: string) => void }) {
   const Icon = track.type === "video" ? I.Film : I.Image;
   const beginEdit = (event: React.PointerEvent<HTMLDivElement | HTMLButtonElement>, clip: TimelineTrack["clips"][number], mode: "move" | "left" | "right") => {
-    event.preventDefault(); event.stopPropagation(); onSelect(clip.id);
+    event.preventDefault(); event.stopPropagation(); onSelect(clip.id, event.ctrlKey || event.metaKey);
     const target = event.currentTarget, lane = target.closest<HTMLElement>(".masterAssetTrackContent")!, width = lane.getBoundingClientRect().width,
       originX = event.clientX, originStart = clip.startFrame, originSource = clip.sourceStartFrame, originDuration = clip.durationInFrames;
     let preview = { startFrame: originStart, sourceStartFrame: originSource, durationInFrames: originDuration };
@@ -1616,7 +1656,7 @@ function MasterAssetTimelineRow({ track, totalFrames, zoom, playhead, selectedCl
   return <div className={`masterAssetTrack timelineDropZone ${dragActive ? "compatibleDrop" : ""}`} onDragOver={(event) => { if (event.dataTransfer.types.includes("application/x-renderlaunch-asset")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; onDragEnter(); } }} onDragLeave={onDragLeave} onDrop={onDrop}>
     <div className="masterAssetTrackLabel"><Icon /><b>{track.name}</b><I.Eye /></div>
     <div className="masterAssetTrackLane"><div className="masterAssetTrackContent dropTimelineContent" style={{ width: `${zoom * 100}%` }}>
-      {track.clips.map((clip) => <div key={`editable:${clip.id}`} data-timeline-clip-id={`asset:${clip.id}`} className={`masterAssetClip ${clip.type} ${clip.id === selectedClipId ? "selected" : ""}`} style={{ left: `${(clip.startFrame / totalFrames) * 100}%`, width: `${(clip.durationInFrames / totalFrames) * 100}%` }} title={`${clip.name} · ${clip.durationInFrames} frames`} onPointerDown={(event) => beginEdit(event, clip, "move")}>
+      {track.clips.map((clip) => <div key={`editable:${clip.id}`} data-timeline-clip-id={`asset:${clip.id}`} className={`masterAssetClip ${clip.type} ${selectedClipIds.includes(`asset:${clip.id}`) ? "selected" : ""}`} style={{ left: `${(clip.startFrame / totalFrames) * 100}%`, width: `${(clip.durationInFrames / totalFrames) * 100}%` }} title={`${clip.name} · ${clip.durationInFrames} frames`} onPointerDown={(event) => beginEdit(event, clip, "move")}>
         {clip.referenceType === "asset" && <button className="masterAssetTrim left" aria-label="Trim clip start" onPointerDown={(event) => beginEdit(event, clip, "left")} />}
         <Icon /><b>{clip.name}</b>
         {clip.referenceType === "asset" && <><button className="masterAssetDelete" title="Remove clip" onPointerDown={(event) => event.stopPropagation()} onClick={() => onDelete(clip.id)}><I.X /></button><button className="masterAssetTrim right" aria-label="Trim clip end" onPointerDown={(event) => beginEdit(event, clip, "right")} /></>}
@@ -1648,9 +1688,9 @@ function MasterOverlay({ overlay }: { overlay: GlobalOverlay }) {
   );
 }
 
-function OverlayTimelineClip({ overlay, totalFrames, selected, onSelect, onChange }: { overlay: GlobalOverlay; totalFrames: number; selected: boolean; onSelect: () => void; onChange: (patch: Partial<GlobalOverlay>) => void }) {
+function OverlayTimelineClip({ overlay, totalFrames, selected, onSelect, onChange }: { overlay: GlobalOverlay; totalFrames: number; selected: boolean; onSelect: (additive: boolean) => void; onChange: (patch: Partial<GlobalOverlay>) => void }) {
   const beginDrag = (event: React.PointerEvent<HTMLElement>, edge?: "left" | "right") => {
-    event.preventDefault(); event.stopPropagation(); onSelect();
+    event.preventDefault(); event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey);
     const target = event.currentTarget.closest<HTMLElement>(".overlayClip")!, lane = target.closest<HTMLElement>(".overlayTrackContent")!, startX = event.clientX,
       original = { start: overlay.startFrame, duration: overlay.durationInFrames };
     target.setPointerCapture(event.pointerId);
@@ -1668,7 +1708,7 @@ function OverlayTimelineClip({ overlay, totalFrames, selected, onSelect, onChang
     const end = () => { target.removeEventListener("pointermove", move); target.removeEventListener("pointerup", end); target.removeEventListener("pointercancel", end); if (Object.keys(patch).length) onChange(patch); };
     target.addEventListener("pointermove", move); target.addEventListener("pointerup", end); target.addEventListener("pointercancel", end);
   };
-  return <div className={`overlayClip ${selected ? "selected" : ""}`} style={{ left: `${(overlay.startFrame / totalFrames) * 100}%`, width: `${(overlay.durationInFrames / totalFrames) * 100}%` }} onPointerDown={beginDrag}>
+  return <div data-timeline-clip-id={`overlay:${overlay.id}`} className={`overlayClip ${selected ? "selected" : ""}`} style={{ left: `${(overlay.startFrame / totalFrames) * 100}%`, width: `${(overlay.durationInFrames / totalFrames) * 100}%` }} onPointerDown={beginDrag}>
     <button className="overlayTrim left" onPointerDown={(event) => beginDrag(event, "left")} />
     {overlay.type === "logo" || overlay.type === "watermark" ? <I.Image /> : <I.Type />}<b>{overlay.name}</b>
     <button className="overlayTrim right" onPointerDown={(event) => beginDrag(event, "right")} />
@@ -1704,17 +1744,18 @@ async function inspectMediaDurationFrames(blob: Blob, type: string, fps: number)
   } finally { media.removeAttribute("src"); media.load(); URL.revokeObjectURL(url); }
 }
 
-function AudioTimelineClip({ clip, totalFrames, selected, onSelect, onChange }: {
+function AudioTimelineClip({ clip, timelineId, totalFrames, selected, onSelect, onChange }: {
   clip: AudioClip;
+  timelineId: string;
   totalFrames: number;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: (additive: boolean) => void;
   onChange: (patch: Partial<AudioClip>) => void;
 }) {
   const beginDrag = (event: React.PointerEvent<HTMLDivElement>, edge?: "left" | "right") => {
     event.preventDefault();
     event.stopPropagation();
-    onSelect();
+    onSelect(event.ctrlKey || event.metaKey);
     const target = event.currentTarget,
       lane = target.closest<HTMLElement>(".audioTrackContent")!,
       startX = event.clientX,
@@ -1747,7 +1788,7 @@ function AudioTimelineClip({ clip, totalFrames, selected, onSelect, onChange }: 
     target.addEventListener("pointercancel", end);
   };
   return (
-    <div className={`audioClip ${selected ? "selected" : ""}`} style={{ left: `${(clip.startFrame / totalFrames) * 100}%`, width: `${(clip.durationInFrames / totalFrames) * 100}%` }} onPointerDown={(event) => beginDrag(event)}>
+    <div data-timeline-clip-id={timelineId} className={`audioClip ${selected ? "selected" : ""}`} style={{ left: `${(clip.startFrame / totalFrames) * 100}%`, width: `${(clip.durationInFrames / totalFrames) * 100}%` }} onPointerDown={(event) => beginDrag(event)}>
       <button className="audioTrim left" onPointerDown={(event) => beginDrag(event as unknown as React.PointerEvent<HTMLDivElement>, "left")} />
       <span>{clip.waveform.map((peak, index) => <i key={index} style={{ height: `${Math.max(8, peak * 100)}%` }} />)}</span>
       <b>{clip.fileName}</b>

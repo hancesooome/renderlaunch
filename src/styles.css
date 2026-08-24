@@ -456,12 +456,16 @@ button {
   text-align: right;
 }
 .masterTimelinePanel {
+  position: relative;
   min-height: 0;
   padding: 12px 18px 18px;
   border-top: 1px solid var(--ui-border);
   background: var(--ui-surface);
   overflow-y: auto;
 }
+.masterTimelinePanel,.masterTimelinePanel * { -webkit-user-select: none; user-select: none; }
+.masterTimelinePanel input,.masterTimelinePanel textarea { -webkit-user-select: text; user-select: text; }
+.masterTimelineMarquee { position: absolute; z-index: 50; pointer-events: none; border: 1px solid #43a1ff; border-radius: 2px; background: #168cff2b; box-shadow: 0 0 0 1px #168cff22; }
 
 .audioTimeline {
   margin-top: 8px;
