@@ -19,6 +19,7 @@ import { inspectGlb } from "../model/inspectGlb";
 import { loadAssetBlob, saveAsset } from "../persistence/database";
 import { SceneCanvas } from "../scene/SceneCanvas";
 import { useAssetUrl } from "../model/useAssetUrl";
+import { useTheme, type ThemePreference } from "../theme/useTheme";
 
 const icons: Record<ProjectLayer["type"], LucideIcon> = {
   camera: I.Video,
@@ -33,6 +34,11 @@ const bgClass = (name: string) => `bg-${name.replace(/ /g, "-").toLowerCase()}`;
 
 export function App() {
   useEditorRuntime();
+  const {
+    preference: theme,
+    setPreference: setTheme,
+    resolved: resolvedTheme,
+  } = useTheme();
   const project = useEditorStore((s) => s.project),
     frame = useEditorStore((s) => s.currentFrame),
     playing = useEditorStore((s) => s.playing),
@@ -62,7 +68,8 @@ export function App() {
     [uploadError, setUploadError] = useState("");
   const [frameRequest, setFrameRequest] = useState(0),
     [testingTemplate, setTestingTemplate] = useState(false),
-    [exporting, setExporting] = useState(false);
+    [exporting, setExporting] = useState(false),
+    [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const replaceModel = async (file?: File) => {
     if (!file) return;
     setUploading(true);
@@ -204,10 +211,21 @@ export function App() {
               <span>{name}</span>
             </button>
           ))}
-          <button className="settings">
+          <button
+            className="settings"
+            onClick={() => setThemeMenuOpen((value) => !value)}
+          >
             <I.Settings />
             <span>Settings</span>
           </button>
+          {themeMenuOpen && (
+            <ThemeMenu
+              preference={theme}
+              resolved={resolvedTheme}
+              onChange={setTheme}
+              onClose={() => setThemeMenuOpen(false)}
+            />
+          )}
         </nav>
         <aside className="left">
           <h2>{tool === "Model" ? "Layers" : tool}</h2>
@@ -449,6 +467,57 @@ function LayerRow({
         {layer.locked ? <I.Lock /> : <I.Unlock />}
       </button>
       <I.MoreVertical />
+    </div>
+  );
+}
+
+function ThemeMenu({
+  preference,
+  resolved,
+  onChange,
+  onClose,
+}: {
+  preference: ThemePreference;
+  resolved: "light" | "dark";
+  onChange: (theme: ThemePreference) => void;
+  onClose: () => void;
+}) {
+  const options: Array<{
+    value: ThemePreference;
+    label: string;
+    Icon: LucideIcon;
+  }> = [
+    { value: "light", label: "Light", Icon: I.Sun },
+    { value: "dark", label: "Dark", Icon: I.Moon },
+    { value: "system", label: "System", Icon: I.Monitor },
+  ];
+  return (
+    <div className="themeMenu" role="dialog" aria-label="Appearance settings">
+      <div className="themeMenuHead">
+        <div>
+          <b>Appearance</b>
+          <small>Currently using {resolved} mode</small>
+        </div>
+        <button aria-label="Close appearance settings" onClick={onClose}>
+          <I.X />
+        </button>
+      </div>
+      <div className="themeOptions">
+        {options.map(({ value, label, Icon }) => (
+          <button
+            key={value}
+            className={preference === value ? "on" : ""}
+            onClick={() => onChange(value)}
+          >
+            <Icon />
+            <span>{label}</span>
+            {preference === value && <I.Check />}
+          </button>
+        ))}
+      </div>
+      <p>
+        Theme changes affect the editor only, not your composition or export.
+      </p>
     </div>
   );
 }
