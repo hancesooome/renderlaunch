@@ -78,3 +78,16 @@ nav button{color:var(--ui-text)}nav button.active{color:var(--ui-accent);backgro
 .themeOptions{display:grid;gap:5px;margin-top:12px}.themeOptions button{width:100%;height:38px;padding:0 9px;display:flex;flex-direction:row;justify-content:flex-start;gap:9px;border-radius:8px;color:var(--ui-text)}.themeOptions button:hover{background:var(--ui-hover)}.themeOptions button.on{background:var(--ui-accent-soft);color:var(--ui-accent)}.themeOptions button span{flex:1;text-align:left}.themeOptions button svg{width:16px}
 .themeMenu p{margin:11px 2px 0;color:var(--ui-muted);font-size:10px;line-height:1.4}
 :root[data-theme="dark"] input[type="color"]{color-scheme:dark}
+:root[data-theme="dark"] .clip{color:#f1f7ff;border-color:#73b5ff;text-shadow:0 1px 2px #0009}
+:root[data-theme="dark"] .clip b{color:#f5f1ff;background:#554f78;border-left-color:#a99cff}
+:root[data-theme="dark"] .track.sel{background:#202630}
+:root[data-theme="dark"] .track:hover{background:#1e232b}
+:root[data-theme="dark"] .trackLabel svg{color:#c8ccd4}
+:root[data-theme="dark"] .playhead,:root[data-theme="dark"] .playhead i{background:#42a0ff}
+:root[data-theme="dark"] .clipHandle{background:#78baff}
+:root[data-theme="dark"] .canvasControls{background:#252932ee;border:1px solid #3b414c}
+:root[data-theme="dark"] .canvasControls button{color:#e8ebf0}
+:root[data-theme="dark"] .canvasControls button:first-child,
+:root[data-theme="dark"] .canvasControls button:nth-child(3){background:#383e48;color:#fff;box-shadow:0 1px 5px #0008}
+:root[data-theme="dark"] .canvasControls button:hover{background:#444b57}
+:root[data-theme="dark"] .canvasControls em{background:#505662}

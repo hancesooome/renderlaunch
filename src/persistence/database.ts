@@ -1,5 +1,9 @@
 import Dexie, { type EntityTable } from "dexie";
-import { projectSchema, type TemplateProject } from "../project/schema";
+import {
+  migrateProjectData,
+  projectSchema,
+  type TemplateProject,
+} from "../project/schema";
 
 type StoredProject = TemplateProject & { savedAt: string };
 type StoredAsset = {
@@ -36,7 +40,7 @@ export async function loadRecentProject(): Promise<TemplateProject | null> {
   const needsReplaceableMigration = project.layers.every(
     (layer) => !Object.prototype.hasOwnProperty.call(layer, "replaceable"),
   );
-  const result = projectSchema.safeParse(project);
+  const result = projectSchema.safeParse(migrateProjectData(project));
   if (!result.success) return null;
   if (needsReplaceableMigration)
     result.data.layers.forEach((layer) => {

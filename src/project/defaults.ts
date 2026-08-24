@@ -22,7 +22,7 @@ export function createDefaultProject(): TemplateProject {
     },
   };
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: crypto.randomUUID(),
     name: "Untitled Device Template",
     canvas: { width: 1280, height: 720, fps: 30, durationInFrames: 450 },
@@ -172,6 +172,7 @@ export function createDefaultProject(): TemplateProject {
         color: "#b9c4d3",
       },
     ],
+    keyframeTracks: [],
     createdAt: now,
     updatedAt: now,
   };

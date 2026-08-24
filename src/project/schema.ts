@@ -2,6 +2,96 @@ import { z } from "zod";
 
 const vector3 = z.tuple([z.number(), z.number(), z.number()]);
 
+export const keyframeEasingSchema = z.enum([
+  "linear",
+  "ease-in",
+  "ease-out",
+  "ease-in-out",
+  "custom-bezier",
+]);
+
+export const numericKeyframePropertySchema = z.enum([
+  "device.position.x",
+  "device.position.y",
+  "device.position.z",
+  "device.rotation.x",
+  "device.rotation.y",
+  "device.rotation.z",
+  "device.scale",
+  "camera.position.x",
+  "camera.position.y",
+  "camera.position.z",
+  "camera.target.x",
+  "camera.target.y",
+  "camera.target.z",
+  "camera.fov",
+  "overlay.position.x",
+  "overlay.position.y",
+  "overlay.width",
+  "overlay.height",
+  "overlay.rotation",
+  "overlay.opacity",
+  "lighting.environmentIntensity",
+  "lighting.keyIntensity",
+  "lighting.keyPosition.x",
+  "lighting.keyPosition.y",
+  "lighting.keyPosition.z",
+  "lighting.fillIntensity",
+  "lighting.shadowOpacity",
+  "lighting.shadowSoftness",
+  "background.angle",
+  "screen.opacity",
+  "screen.offset.x",
+  "screen.offset.y",
+  "screen.scale.x",
+  "screen.scale.y",
+  "screen.playbackOffset",
+]);
+
+export const colorKeyframePropertySchema = z.enum([
+  "overlay.color",
+  "lighting.keyColor",
+  "background.colorA",
+  "background.colorB",
+]);
+
+const keyframeMetadata = {
+  id: z.string().min(1),
+  frame: z.number().int().nonnegative(),
+  interpolation: z.enum(["linear", "hold", "bezier"]).default("linear"),
+  easing: keyframeEasingSchema.default("linear"),
+  bezier: z.tuple([z.number(), z.number(), z.number(), z.number()]).optional(),
+};
+
+export const numericKeyframeSchema = z.object({
+  ...keyframeMetadata,
+  value: z.number().finite(),
+});
+
+export const colorKeyframeSchema = z.object({
+  ...keyframeMetadata,
+  value: z.string().min(1),
+});
+
+export const keyframeTrackSchema = z.discriminatedUnion("valueType", [
+  z.object({
+    id: z.string().min(1),
+    targetId: z.string().min(1),
+    valueType: z.literal("number"),
+    property: numericKeyframePropertySchema,
+    enabled: z.boolean().default(true),
+    keyframes: z.array(numericKeyframeSchema).default([]),
+  }),
+  z.object({
+    id: z.string().min(1),
+    targetId: z.string().min(1),
+    valueType: z.literal("color"),
+    property: colorKeyframePropertySchema,
+    enabled: z.boolean().default(true),
+    keyframes: z.array(colorKeyframeSchema).default([]),
+  }),
+]);
+
 export const layerSchema = z.object({
   id: z.string(),
   type: z.enum([
@@ -94,7 +184,7 @@ export const layerSchema = z.object({
 });
 
 export const projectSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   id: z.string(),
   name: z.string().min(1),
   canvas: z.object({
@@ -203,10 +293,22 @@ export const projectSchema = z.object({
     angle: z.number().default(135),
   }),
   layers: z.array(layerSchema),
+  keyframeTracks: z.array(keyframeTrackSchema).default([]),
   thumbnailDataUrl: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 
+export function migrateProjectData(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const project = value as Record<string, unknown>;
+  if (project.schemaVersion === 1)
+    return { ...project, schemaVersion: 2, keyframeTracks: [] };
+  return project;
+}
+
 export type TemplateProject = z.infer<typeof projectSchema>;
 export type ProjectLayer = z.infer<typeof layerSchema>;
+export type KeyframeTrack = z.infer<typeof keyframeTrackSchema>;
+export type NumericKeyframe = z.infer<typeof numericKeyframeSchema>;
+export type ColorKeyframe = z.infer<typeof colorKeyframeSchema>;
