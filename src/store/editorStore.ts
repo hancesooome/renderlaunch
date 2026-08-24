@@ -18,6 +18,7 @@ type EditorState = {
   zoom: number;
   preview: boolean;
   transformMode: TransformMode;
+  autoKey: boolean;
   hydrated: boolean;
   saveStatus: SaveStatus;
   past: TemplateProject[];
@@ -32,6 +33,7 @@ type EditorState = {
   setZoom: (zoom: number) => void;
   setPreview: (preview: boolean) => void;
   setTransformMode: (mode: TransformMode) => void;
+  setAutoKey: (enabled: boolean) => void;
   undo: () => void;
   redo: () => void;
   persist: () => Promise<void>;
@@ -46,6 +48,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   zoom: 77,
   preview: false,
   transformMode: "translate",
+  autoKey: false,
   hydrated: false,
   saveStatus: "loading",
   past: [],
@@ -91,6 +94,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setZoom: (zoom) => set({ zoom: clamp(zoom, 30, 150) }),
   setPreview: (preview) => set({ preview }),
   setTransformMode: (transformMode) => set({ transformMode }),
+  setAutoKey: (autoKey) => set({ autoKey }),
   undo: () =>
     set((state) => {
       const previous = state.past[state.past.length - 1];

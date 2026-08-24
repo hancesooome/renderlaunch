@@ -11,6 +11,16 @@ import Moveable from "react-moveable";
 import type { LucideIcon } from "lucide-react";
 import { clamp, easeOutCubic, formatTimecode } from "../animation/frame";
 import { evaluateOverlayFrame } from "../animation/presets";
+import {
+  createColorTrack,
+  createNumericTrack,
+  evaluateColorProperty,
+  evaluateNumericProperty,
+  findKeyframeTrack,
+  upsertColorKeyframe,
+  upsertNumericKeyframe,
+} from "../animation/keyframes";
+import type { KeyframeTrack } from "../project/schema";
 import type { ProjectLayer, TemplateProject } from "../project/schema";
 import { useEditorStore } from "../store/editorStore";
 import type { TransformMode } from "../store/editorStore";
@@ -63,7 +73,9 @@ export function App() {
     project.layers.find((layer) => layer.id === selectedId) ??
     project.layers[0];
   const transformMode = useEditorStore((s) => s.transformMode),
-    setTransformMode = useEditorStore((s) => s.setTransformMode);
+    setTransformMode = useEditorStore((s) => s.setTransformMode),
+    autoKey = useEditorStore((s) => s.autoKey),
+    setAutoKey = useEditorStore((s) => s.setAutoKey);
   const [uploading, setUploading] = useState(false),
     [uploadError, setUploadError] = useState("");
   const [frameRequest, setFrameRequest] = useState(0),
@@ -307,7 +319,7 @@ export function App() {
         </aside>
         <div
           className={`workspace ${bgClass(project.background.preset)}`}
-          style={backgroundStyle(project)}
+          style={backgroundStyle(project, frame)}
         >
           <div className="canvasGlow" />
           {isLayerActive(project, "phone", frame) && project.model?.assetId ? (
@@ -323,7 +335,45 @@ export function App() {
               mode={transformMode}
               onTransform={(value) =>
                 update((d) => {
-                  if (d.model) {
+                  if (d.model && autoKey) {
+                    const deviceId =
+                      d.layers.find((layer) => layer.type === "device")?.id ??
+                      "phone";
+                    if (transformMode === "translate")
+                      value.position.forEach((axisValue, index) =>
+                        setNumericKeyframe(
+                          d,
+                          deviceId,
+                          `device.position.${["x", "y", "z"][index]}` as
+                            | "device.position.x"
+                            | "device.position.y"
+                            | "device.position.z",
+                          frame,
+                          axisValue,
+                        ),
+                      );
+                    else if (transformMode === "rotate")
+                      value.rotation.forEach((axisValue, index) =>
+                        setNumericKeyframe(
+                          d,
+                          deviceId,
+                          `device.rotation.${["x", "y", "z"][index]}` as
+                            | "device.rotation.x"
+                            | "device.rotation.y"
+                            | "device.rotation.z",
+                          frame,
+                          axisValue,
+                        ),
+                      );
+                    else
+                      setNumericKeyframe(
+                        d,
+                        deviceId,
+                        "device.scale",
+                        frame,
+                        Math.max(0.01, value.scale),
+                      );
+                  } else if (d.model) {
                     d.model.position = value.position;
                     d.model.rotation = value.rotation;
                     d.model.scale = Math.max(0.01, value.scale);
@@ -339,8 +389,29 @@ export function App() {
                     defaultPosition: [0, 0.6, 4],
                     defaultTarget: [0, 0, 0],
                   };
-                  d.camera.position = position;
-                  d.camera.target = target;
+                  if (autoKey && reason === "interaction") {
+                    position.forEach((value, axis) =>
+                      setNumericKeyframe(
+                        d,
+                        "camera",
+                        `camera.position.${(["x", "y", "z"] as const)[axis]}`,
+                        frame,
+                        value,
+                      ),
+                    );
+                    target.forEach((value, axis) =>
+                      setNumericKeyframe(
+                        d,
+                        "camera",
+                        `camera.target.${(["x", "y", "z"] as const)[axis]}`,
+                        frame,
+                        value,
+                      ),
+                    );
+                  } else {
+                    d.camera.position = position;
+                    d.camera.target = target;
+                  }
                   if (reason === "frame" && d.model?.assetId) {
                     d.camera.framedAssetId = d.model.assetId;
                   }
@@ -408,10 +479,12 @@ export function App() {
         frame={frame}
         playing={playing}
         selectedId={selectedId}
+        autoKey={autoKey}
         update={update}
         onFrame={setFrame}
         onPlay={setPlaying}
         onSelect={setSelected}
+        onAutoKey={setAutoKey}
       />
       {exporting && (
         <ExportDialog project={project} onClose={() => setExporting(false)} />
@@ -1151,23 +1224,31 @@ function Timeline({
   frame,
   playing,
   selectedId,
+  autoKey,
   update,
   onFrame,
   onPlay,
   onSelect,
+  onAutoKey,
 }: {
   project: TemplateProject;
   frame: number;
   playing: boolean;
   selectedId: string;
+  autoKey: boolean;
   update: (recipe: (draft: TemplateProject) => void) => void;
   onFrame: (frame: number) => void;
   onPlay: (playing: boolean) => void;
   onSelect: (id: string) => void;
+  onAutoKey: (enabled: boolean) => void;
 }) {
   const duration = project.canvas.durationInFrames,
     seconds = duration / project.canvas.fps,
     [zoom, setZoom] = useState(1),
+    [selectedKeyframe, setSelectedKeyframe] = useState<{
+      trackId: string;
+      keyframeId: string;
+    }>(),
     ticks = useMemo(
       () =>
         Array.from(
@@ -1176,6 +1257,20 @@ function Timeline({
         ),
       [seconds, zoom],
     );
+  const selectedTrack = project.keyframeTracks.find(
+      (track) => track.id === selectedKeyframe?.trackId,
+    ),
+    selectedKey = selectedTrack?.keyframes.find(
+      (keyframe) => keyframe.id === selectedKeyframe?.keyframeId,
+    ),
+    selectedTrackKeyframes = selectedTrack
+      ? [...selectedTrack.keyframes].sort((a, b) => a.frame - b.frame)
+      : [],
+    selectedTrackIndex = selectedKey
+      ? selectedTrackKeyframes.findIndex(
+          (keyframe) => keyframe.id === selectedKey.id,
+        )
+      : -1;
   const scrub = (event: React.PointerEvent<HTMLElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const target = event.currentTarget;
@@ -1211,6 +1306,146 @@ function Timeline({
         </button>
         <b>{formatTimecode(frame, project.canvas.fps)}</b>
         <span>/ {formatTimecode(duration, project.canvas.fps)}</span>
+        <button
+          className={`autoKey ${autoKey ? "on" : ""}`}
+          title="Automatically create transform keyframes"
+          onClick={() => onAutoKey(!autoKey)}
+        >
+          <i /> Auto Key
+        </button>
+        {selectedTrack && selectedKey && (
+          <div className="keyframeEditor">
+            <button
+              title="Previous keyframe"
+              disabled={selectedTrackIndex <= 0}
+              onClick={() => {
+                const keyframe = selectedTrackKeyframes[selectedTrackIndex - 1];
+                if (!keyframe) return;
+                setSelectedKeyframe({
+                  trackId: selectedTrack.id,
+                  keyframeId: keyframe.id,
+                });
+                onFrame(keyframe.frame);
+              }}
+            >
+              <I.ChevronLeft />
+            </button>
+            <button
+              title="Next keyframe"
+              disabled={selectedTrackIndex >= selectedTrackKeyframes.length - 1}
+              onClick={() => {
+                const keyframe = selectedTrackKeyframes[selectedTrackIndex + 1];
+                if (!keyframe) return;
+                setSelectedKeyframe({
+                  trackId: selectedTrack.id,
+                  keyframeId: keyframe.id,
+                });
+                onFrame(keyframe.frame);
+              }}
+            >
+              <I.ChevronRight />
+            </button>
+            <Field
+              label="F"
+              value={selectedKey.frame}
+              onChange={(value) =>
+                update((draft) => {
+                  const track = draft.keyframeTracks.find(
+                    (item) => item.id === selectedTrack.id,
+                  );
+                  const keyframe = track?.keyframes.find(
+                    (item) => item.id === selectedKey.id,
+                  );
+                  if (keyframe)
+                    keyframe.frame = Math.round(clamp(value, 0, duration - 1));
+                })
+              }
+            />
+            {selectedTrack.valueType === "number" &&
+              typeof selectedKey.value === "number" && (
+                <Field
+                  label="V"
+                  value={selectedKey.value}
+                  onChange={(value) =>
+                    update((draft) => {
+                      const track = draft.keyframeTracks.find(
+                        (item) => item.id === selectedTrack.id,
+                      );
+                      if (track?.valueType !== "number") return;
+                      const keyframe = track.keyframes.find(
+                        (item) => item.id === selectedKey.id,
+                      );
+                      if (keyframe) keyframe.value = value;
+                    })
+                  }
+                />
+              )}
+            {selectedTrack.valueType === "color" &&
+              typeof selectedKey.value === "string" && (
+                <input
+                  aria-label="Keyframe color"
+                  type="color"
+                  value={selectedKey.value}
+                  onChange={(event) =>
+                    update((draft) => {
+                      const track = draft.keyframeTracks.find(
+                        (item) => item.id === selectedTrack.id,
+                      );
+                      if (track?.valueType !== "color") return;
+                      const keyframe = track.keyframes.find(
+                        (item) => item.id === selectedKey.id,
+                      );
+                      if (keyframe) keyframe.value = event.target.value;
+                    })
+                  }
+                />
+              )}
+            <select
+              aria-label="Keyframe easing"
+              value={selectedKey.easing}
+              onChange={(event) =>
+                update((draft) => {
+                  const track = draft.keyframeTracks.find(
+                    (item) => item.id === selectedTrack.id,
+                  );
+                  const keyframe = track?.keyframes.find(
+                    (item) => item.id === selectedKey.id,
+                  );
+                  if (keyframe)
+                    keyframe.easing = event.target
+                      .value as typeof keyframe.easing;
+                })
+              }
+            >
+              {[
+                "linear",
+                "ease-in",
+                "ease-out",
+                "ease-in-out",
+                "custom-bezier",
+              ].map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
+            <button
+              title="Delete keyframe"
+              onClick={() => {
+                update((draft) => {
+                  const track = draft.keyframeTracks.find(
+                    (item) => item.id === selectedTrack.id,
+                  );
+                  if (track)
+                    track.keyframes = track.keyframes.filter(
+                      (item) => item.id !== selectedKey.id,
+                    ) as typeof track.keyframes;
+                });
+                setSelectedKeyframe(undefined);
+              }}
+            >
+              <I.Trash2 />
+            </button>
+          </div>
+        )}
         <div className="timelineTools">
           <button onClick={() => setZoom((value) => Math.max(1, value - 0.25))}>
             <I.Minus />
@@ -1250,19 +1485,20 @@ function Timeline({
           >
             <i />
           </div>
-          {project.layers
-            .filter((layer) => layer.type !== "background")
-            .map((layer) => (
-              <TimelineTrack
-                key={layer.id}
-                layer={layer}
-                project={project}
-                selected={selectedId === layer.id}
-                update={update}
-                onFrame={onFrame}
-                onSelect={onSelect}
-              />
-            ))}
+          {project.layers.map((layer) => (
+            <TimelineTrack
+              key={layer.id}
+              layer={layer}
+              project={project}
+              frame={frame}
+              selected={selectedId === layer.id}
+              update={update}
+              onFrame={onFrame}
+              onSelect={onSelect}
+              selectedKeyframe={selectedKeyframe}
+              onSelectKeyframe={setSelectedKeyframe}
+            />
+          ))}
         </div>
       </div>
     </footer>
@@ -1271,17 +1507,23 @@ function Timeline({
 function TimelineTrack({
   layer,
   project,
+  frame,
   selected,
   update,
   onFrame,
   onSelect,
+  selectedKeyframe,
+  onSelectKeyframe,
 }: {
   layer: ProjectLayer;
   project: TemplateProject;
+  frame: number;
   selected: boolean;
   update: (recipe: (draft: TemplateProject) => void) => void;
   onFrame: (frame: number) => void;
   onSelect: (id: string) => void;
+  selectedKeyframe?: { trackId: string; keyframeId: string };
+  onSelectKeyframe: (value: { trackId: string; keyframeId: string }) => void;
 }) {
   const Icon = icons[layer.type],
     duration = project.canvas.durationInFrames,
@@ -1289,6 +1531,7 @@ function TimelineTrack({
       start: layer.startFrame,
       length: layer.durationInFrames,
     }),
+    [expanded, setExpanded] = useState(false),
     drag = useRef<{
       mode: "move" | "left" | "right";
       x: number;
@@ -1373,45 +1616,402 @@ function TimelineTrack({
           : layer.type === "lighting"
             ? "Studio lighting"
             : "Camera Move";
+  const channels = getKeyframeChannels(project, layer);
   return (
-    <div
-      className={`track ${selected ? "sel" : ""}`}
-      onClick={() => onSelect(layer.id)}
-    >
-      <div className="trackLabel">
-        <Icon />
-        <span>{layer.name}</span>
-        {layer.locked ? <I.Lock /> : <I.Unlock />}
-      </div>
+    <>
       <div
-        className="clipArea"
-        onClick={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect();
-          onFrame(((event.clientX - rect.left) / rect.width) * duration);
-        }}
+        className={`track ${selected ? "sel" : ""}`}
+        onClick={() => onSelect(layer.id)}
       >
-        <div
-          className="clip"
-          style={{
-            left: `${(preview.start / duration) * 100}%`,
-            width: `${(preview.length / duration) * 100}%`,
-            background: `linear-gradient(90deg,${layer.color}55,${layer.color}aa)`,
-          }}
-          onPointerDown={(event) => begin(event, "move")}
-          onPointerMove={move}
-          onPointerUp={end}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <i
-            className="clipHandle left"
-            onPointerDown={(event) => begin(event, "left")}
-          />
-          <span>{label}</span>
-          <i
-            className="clipHandle right"
-            onPointerDown={(event) => begin(event, "right")}
-          />
+        <div className="trackLabel">
+          <button
+            className={`trackExpand ${expanded ? "open" : ""}`}
+            title="Show keyframe properties"
+            onClick={(event) => {
+              event.stopPropagation();
+              setExpanded((value) => !value);
+            }}
+          >
+            <I.ChevronRight />
+          </button>
+          <Icon />
+          <span>{layer.name}</span>
+          {layer.locked ? <I.Lock /> : <I.Unlock />}
         </div>
+        <div
+          className="clipArea"
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            onFrame(((event.clientX - rect.left) / rect.width) * duration);
+          }}
+        >
+          <div
+            className="clip"
+            style={{
+              left: `${(preview.start / duration) * 100}%`,
+              width: `${(preview.length / duration) * 100}%`,
+              background: `linear-gradient(90deg,${layer.color}55,${layer.color}aa)`,
+            }}
+            onPointerDown={(event) => begin(event, "move")}
+            onPointerMove={move}
+            onPointerUp={end}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <i
+              className="clipHandle left"
+              onPointerDown={(event) => begin(event, "left")}
+            />
+            <span>{label}</span>
+            <i
+              className="clipHandle right"
+              onPointerDown={(event) => begin(event, "right")}
+            />
+          </div>
+        </div>
+      </div>
+      {expanded &&
+        channels.map((channel) => (
+          <KeyframePropertyRow
+            key={`${layer.id}:${channel.property}`}
+            project={project}
+            layer={layer}
+            channel={channel}
+            frame={frame}
+            duration={duration}
+            update={update}
+            onFrame={onFrame}
+            selectedKeyframe={selectedKeyframe}
+            onSelectKeyframe={onSelectKeyframe}
+          />
+        ))}
+    </>
+  );
+}
+
+type KeyframeChannel =
+  | {
+      label: string;
+      valueType: "number";
+      property: Extract<KeyframeTrack, { valueType: "number" }>["property"];
+      value: number;
+    }
+  | {
+      label: string;
+      valueType: "color";
+      property: Extract<KeyframeTrack, { valueType: "color" }>["property"];
+      value: string;
+    };
+
+function getKeyframeChannels(
+  project: TemplateProject,
+  layer: ProjectLayer,
+): KeyframeChannel[] {
+  if (layer.type === "device" && project.model)
+    return [
+      ...(["x", "y", "z"] as const).map((axis, index) => ({
+        label: `Position ${axis.toUpperCase()}`,
+        valueType: "number" as const,
+        property: `device.position.${axis}` as const,
+        value: project.model!.position[index],
+      })),
+      ...(["x", "y", "z"] as const).map((axis, index) => ({
+        label: `Rotation ${axis.toUpperCase()}`,
+        valueType: "number" as const,
+        property: `device.rotation.${axis}` as const,
+        value: project.model!.rotation[index],
+      })),
+      {
+        label: "Scale",
+        valueType: "number",
+        property: "device.scale",
+        value: project.model.scale,
+      },
+    ];
+  if (layer.type === "camera" && project.camera)
+    return [
+      ...(["x", "y", "z"] as const).map((axis, index) => ({
+        label: `Position ${axis.toUpperCase()}`,
+        valueType: "number" as const,
+        property: `camera.position.${axis}` as const,
+        value: project.camera!.position[index],
+      })),
+      ...(["x", "y", "z"] as const).map((axis, index) => ({
+        label: `Target ${axis.toUpperCase()}`,
+        valueType: "number" as const,
+        property: `camera.target.${axis}` as const,
+        value: project.camera!.target[index],
+      })),
+      {
+        label: "Field of View",
+        valueType: "number",
+        property: "camera.fov",
+        value: project.camera.fov,
+      },
+    ];
+  if (layer.type === "text" || layer.type === "image")
+    return [
+      {
+        label: "Position X",
+        valueType: "number",
+        property: "overlay.position.x",
+        value: layer.transform2D.x,
+      },
+      {
+        label: "Position Y",
+        valueType: "number",
+        property: "overlay.position.y",
+        value: layer.transform2D.y,
+      },
+      {
+        label: "Width",
+        valueType: "number",
+        property: "overlay.width",
+        value: layer.transform2D.width,
+      },
+      {
+        label: "Height",
+        valueType: "number",
+        property: "overlay.height",
+        value: layer.transform2D.height,
+      },
+      {
+        label: "Rotation",
+        valueType: "number",
+        property: "overlay.rotation",
+        value: layer.transform2D.rotation,
+      },
+      {
+        label: "Opacity",
+        valueType: "number",
+        property: "overlay.opacity",
+        value: layer.transform2D.opacity,
+      },
+      ...(layer.type === "text"
+        ? [
+            {
+              label: "Text Color",
+              valueType: "color" as const,
+              property: "overlay.color" as const,
+              value: layer.textStyle.color,
+            },
+          ]
+        : []),
+    ];
+  if (layer.type === "lighting")
+    return [
+      ...[
+        [
+          "Environment",
+          "lighting.environmentIntensity",
+          project.lighting.environmentIntensity,
+        ],
+        [
+          "Key Intensity",
+          "lighting.keyIntensity",
+          project.lighting.keyIntensity,
+        ],
+        [
+          "Fill Intensity",
+          "lighting.fillIntensity",
+          project.lighting.fillIntensity,
+        ],
+        [
+          "Shadow Opacity",
+          "lighting.shadowOpacity",
+          project.lighting.shadowOpacity,
+        ],
+        [
+          "Shadow Softness",
+          "lighting.shadowSoftness",
+          project.lighting.shadowSoftness,
+        ],
+        ...(["x", "y", "z"] as const).map((axis, index) => [
+          `Key Position ${axis.toUpperCase()}`,
+          `lighting.keyPosition.${axis}`,
+          project.lighting.keyPosition[index],
+        ]),
+      ].map(([label, property, value]) => ({
+        label: String(label),
+        valueType: "number" as const,
+        property: property as Extract<
+          KeyframeTrack,
+          { valueType: "number" }
+        >["property"],
+        value: Number(value),
+      })),
+      {
+        label: "Key Color",
+        valueType: "color" as const,
+        property: "lighting.keyColor" as const,
+        value: project.lighting.keyColor,
+      },
+    ];
+  if (layer.type === "background")
+    return [
+      {
+        label: "Gradient Angle",
+        valueType: "number",
+        property: "background.angle",
+        value: project.background.angle,
+      },
+      {
+        label: "Start Color",
+        valueType: "color",
+        property: "background.colorA",
+        value: project.background.colorA,
+      },
+      {
+        label: "End Color",
+        valueType: "color",
+        property: "background.colorB",
+        value: project.background.colorB,
+      },
+    ];
+  if (layer.type === "screen-media" && project.screen)
+    return [
+      ["Offset X", "screen.offset.x", project.screen.offset[0]],
+      ["Offset Y", "screen.offset.y", project.screen.offset[1]],
+      ["Scale X", "screen.scale.x", project.screen.scale[0]],
+      ["Scale Y", "screen.scale.y", project.screen.scale[1]],
+      ["Opacity", "screen.opacity", 1],
+      ["Playback Offset", "screen.playbackOffset", 0],
+    ].map(([label, property, value]) => ({
+      label: String(label),
+      valueType: "number" as const,
+      property: property as Extract<
+        KeyframeTrack,
+        { valueType: "number" }
+      >["property"],
+      value: Number(value),
+    }));
+  return [];
+}
+
+function KeyframePropertyRow({
+  project,
+  layer,
+  channel,
+  frame,
+  duration,
+  update,
+  onFrame,
+  selectedKeyframe,
+  onSelectKeyframe,
+}: {
+  project: TemplateProject;
+  layer: ProjectLayer;
+  channel: KeyframeChannel;
+  frame: number;
+  duration: number;
+  update: (recipe: (draft: TemplateProject) => void) => void;
+  onFrame: (frame: number) => void;
+  selectedKeyframe?: { trackId: string; keyframeId: string };
+  onSelectKeyframe: (value: { trackId: string; keyframeId: string }) => void;
+}) {
+  const track = findKeyframeTrack(
+      project.keyframeTracks,
+      layer.id,
+      channel.property,
+    ),
+    [drag, setDrag] = useState<{ id: string; frame: number }>();
+  const add = () => {
+    update((draft) => {
+      if (channel.valueType === "number")
+        setNumericKeyframe(
+          draft,
+          layer.id,
+          channel.property,
+          frame,
+          evaluateNumericProperty(
+            draft.keyframeTracks,
+            layer.id,
+            channel.property,
+            frame,
+            channel.value,
+          ),
+        );
+      else
+        setColorKeyframe(
+          draft,
+          layer.id,
+          channel.property,
+          frame,
+          evaluateColorProperty(
+            draft.keyframeTracks,
+            layer.id,
+            channel.property,
+            frame,
+            channel.value,
+          ),
+        );
+    });
+  };
+  return (
+    <div className="propertyTrack">
+      <div className="propertyLabel">
+        <span>{channel.label}</span>
+        <button title={`Add ${channel.label} keyframe`} onClick={add}>
+          <I.Diamond />
+        </button>
+      </div>
+      <div className="keyframeLane" onDoubleClick={add}>
+        {track?.keyframes.map((keyframe) => {
+          const shownFrame =
+            drag && drag.id === keyframe.id ? drag.frame : keyframe.frame;
+          return (
+            <button
+              key={keyframe.id}
+              className={`keyframeDiamond ${
+                selectedKeyframe?.keyframeId === keyframe.id ? "selected" : ""
+              }`}
+              style={{ left: `${(shownFrame / duration) * 100}%` }}
+              title={`Frame ${shownFrame}`}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                event.currentTarget.setPointerCapture(event.pointerId);
+                setDrag({ id: keyframe.id, frame: keyframe.frame });
+                onSelectKeyframe({
+                  trackId: track.id,
+                  keyframeId: keyframe.id,
+                });
+                onFrame(keyframe.frame);
+              }}
+              onPointerMove={(event) => {
+                if (!drag || drag.id !== keyframe.id) return;
+                const activeDrag = drag;
+                const lane = event.currentTarget.parentElement!;
+                const rect = lane.getBoundingClientRect();
+                setDrag({
+                  id: activeDrag.id,
+                  frame: Math.round(
+                    clamp(
+                      ((event.clientX - rect.left) / rect.width) * duration,
+                      0,
+                      duration - 1,
+                    ),
+                  ),
+                });
+              }}
+              onPointerUp={() => {
+                if (!drag || drag.id !== keyframe.id) return;
+                const nextFrame = drag.frame;
+                update((draft) => {
+                  const editableTrack = draft.keyframeTracks.find(
+                    (item) => item.id === track.id,
+                  );
+                  const editableKeyframe = editableTrack?.keyframes.find(
+                    (item) => item.id === keyframe.id,
+                  );
+                  if (editableKeyframe) editableKeyframe.frame = nextFrame;
+                });
+                onFrame(nextFrame);
+                setDrag(undefined);
+              }}
+            >
+              <I.Diamond />
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -1579,7 +2179,7 @@ function ExportDialog({
           data-scene-ready={sceneReady}
           data-media-frame={mediaReadyFrame}
           className={`renderComposition ${bgClass(project.background.preset)}`}
-          style={backgroundStyle(project)}
+          style={backgroundStyle(project, renderFrame)}
         >
           {project.model?.assetId && (
             <div
@@ -1959,7 +2559,7 @@ function UserPreview({
       </aside>
       <div
         className={`previewStage ${bgClass(project.background.preset)}`}
-        style={backgroundStyle(project)}
+        style={backgroundStyle(project, frame)}
       >
         <div className="canvasGlow" />
         {project.model?.assetId ? (
@@ -2016,7 +2616,7 @@ function Preview({
       </button>
       <div
         className={`previewStage ${bgClass(project.background.preset)}`}
-        style={backgroundStyle(project)}
+        style={backgroundStyle(project, frame)}
       >
         <div className="canvasGlow" />
         {project.model?.assetId ? (
@@ -2212,7 +2812,8 @@ function OverlayStage({
   update: (recipe: (draft: TemplateProject) => void) => void;
   onSelect: (id: string) => void;
 }) {
-  const wrapper = useRef<HTMLDivElement>(null),
+  const autoKey = useEditorStore((state) => state.autoKey),
+    wrapper = useRef<HTMLDivElement>(null),
     moveable = useRef<Moveable>(null),
     [scale, setScale] = useState(1),
     [target, setTarget] = useState<HTMLElement | null>(null),
@@ -2260,10 +2861,35 @@ function OverlayStage({
     selected?.transform2D.height,
     selected?.transform2D.rotation,
   ]);
-  const commit = (recipe: (item: ProjectLayer) => void) =>
+  const commitTransform = (
+      values: Partial<
+        Pick<
+          ProjectLayer["transform2D"],
+          "x" | "y" | "width" | "height" | "rotation"
+        >
+      >,
+    ) =>
       update((d) => {
         const item = d.layers.find((layer) => layer.id === selectedId);
-        if (item) recipe(item);
+        if (!item) return;
+        if (!autoKey) Object.assign(item.transform2D, values);
+        else
+          Object.entries(values).forEach(([key, value]) => {
+            const properties = {
+              x: "overlay.position.x",
+              y: "overlay.position.y",
+              width: "overlay.width",
+              height: "overlay.height",
+              rotation: "overlay.rotation",
+            } as const;
+            setNumericKeyframe(
+              d,
+              item.id,
+              properties[key as keyof typeof properties],
+              frame,
+              value,
+            );
+          });
       }),
     resetTarget = () => {
       if (!target || !selected) return;
@@ -2289,6 +2915,7 @@ function OverlayStage({
         {visible.map((layer) => (
           <OverlayItem
             key={layer.id}
+            project={project}
             layer={layer}
             frame={frame}
             scale={scale}
@@ -2319,17 +2946,17 @@ function OverlayStage({
                 requestAnimationFrame(() => moveable.current?.updateRect());
                 return;
               }
-              commit((item) => {
-                item.transform2D.x = clamp(
+              commitTransform({
+                x: clamp(
                   selected.transform2D.x + delta[0] / scale,
                   0,
-                  1280 - item.transform2D.width,
-                );
-                item.transform2D.y = clamp(
+                  1280 - selected.transform2D.width,
+                ),
+                y: clamp(
                   selected.transform2D.y + delta[1] / scale,
                   0,
-                  720 - item.transform2D.height,
-                );
+                  720 - selected.transform2D.height,
+                ),
               });
               resetTarget();
             }}
@@ -2345,21 +2972,21 @@ function OverlayStage({
                 requestAnimationFrame(() => moveable.current?.updateRect());
                 return;
               }
-              commit((item) => {
-                const width = Math.max(20, last.width / scale),
-                  height = Math.max(20, last.height / scale);
-                item.transform2D.width = width;
-                item.transform2D.height = height;
-                item.transform2D.x = clamp(
+              const width = Math.max(20, last.width / scale),
+                height = Math.max(20, last.height / scale);
+              commitTransform({
+                width,
+                height,
+                x: clamp(
                   selected.transform2D.x + last.drag.beforeTranslate[0] / scale,
                   0,
                   1280 - width,
-                );
-                item.transform2D.y = clamp(
+                ),
+                y: clamp(
                   selected.transform2D.y + last.drag.beforeTranslate[1] / scale,
                   0,
                   720 - height,
-                );
+                ),
               });
               resetTarget();
             }}
@@ -2368,8 +2995,8 @@ function OverlayStage({
             }}
             onRotateEnd={(e) => {
               if (e.lastEvent)
-                commit((item) => {
-                  item.transform2D.rotation = e.lastEvent!.beforeRotation;
+                commitTransform({
+                  rotation: e.lastEvent.beforeRotation,
                 });
               resetTarget();
             }}
@@ -2379,12 +3006,14 @@ function OverlayStage({
   );
 }
 function OverlayItem({
+  project,
   layer,
   frame,
   scale,
   selected,
   onSelect,
 }: {
+  project: TemplateProject;
   layer: ProjectLayer;
   frame: number;
   scale: number;
@@ -2392,8 +3021,61 @@ function OverlayItem({
   onSelect: () => void;
 }) {
   const asset = useAssetUrl(layer.media?.assetId),
-    transform = layer.transform2D,
-    style = layer.textStyle,
+    baseTransform = layer.transform2D,
+    transform = {
+      x: evaluateNumericProperty(
+        project.keyframeTracks,
+        layer.id,
+        "overlay.position.x",
+        frame,
+        baseTransform.x,
+      ),
+      y: evaluateNumericProperty(
+        project.keyframeTracks,
+        layer.id,
+        "overlay.position.y",
+        frame,
+        baseTransform.y,
+      ),
+      width: evaluateNumericProperty(
+        project.keyframeTracks,
+        layer.id,
+        "overlay.width",
+        frame,
+        baseTransform.width,
+      ),
+      height: evaluateNumericProperty(
+        project.keyframeTracks,
+        layer.id,
+        "overlay.height",
+        frame,
+        baseTransform.height,
+      ),
+      rotation: evaluateNumericProperty(
+        project.keyframeTracks,
+        layer.id,
+        "overlay.rotation",
+        frame,
+        baseTransform.rotation,
+      ),
+      opacity: evaluateNumericProperty(
+        project.keyframeTracks,
+        layer.id,
+        "overlay.opacity",
+        frame,
+        baseTransform.opacity,
+      ),
+    },
+    style = {
+      ...layer.textStyle,
+      color: evaluateColorProperty(
+        project.keyframeTracks,
+        layer.id,
+        "overlay.color",
+        frame,
+        layer.textStyle.color,
+      ),
+    },
     animation = evaluateOverlayFrame(layer, frame);
   return (
     <div
@@ -2477,6 +3159,7 @@ function PreviewOverlays({
           .map((layer) => (
             <OverlayItem
               key={layer.id}
+              project={project}
               layer={layer}
               frame={frame}
               scale={scale}
@@ -3564,8 +4247,34 @@ function applyBackgroundPreset(
     angle: 135,
   };
 }
-function backgroundStyle(project: TemplateProject) {
-  const background = project.background,
+function backgroundStyle(project: TemplateProject, frame = 0) {
+  const backgroundId =
+      project.layers.find((layer) => layer.type === "background")?.id ??
+      "background",
+    background = {
+      ...project.background,
+      colorA: evaluateColorProperty(
+        project.keyframeTracks,
+        backgroundId,
+        "background.colorA",
+        frame,
+        project.background.colorA,
+      ),
+      colorB: evaluateColorProperty(
+        project.keyframeTracks,
+        backgroundId,
+        "background.colorB",
+        frame,
+        project.background.colorB,
+      ),
+      angle: evaluateNumericProperty(
+        project.keyframeTracks,
+        backgroundId,
+        "background.angle",
+        frame,
+        project.background.angle,
+      ),
+    },
     visible =
       project.layers.find((layer) => layer.type === "background")?.visible ??
       true;
@@ -3576,6 +4285,41 @@ function backgroundStyle(project: TemplateProject) {
         : `linear-gradient(${background.angle}deg, ${background.colorA}, ${background.colorB})`
       : "#ececef",
   };
+}
+function setNumericKeyframe(
+  project: TemplateProject,
+  targetId: string,
+  property: Extract<KeyframeTrack, { valueType: "number" }>["property"],
+  frame: number,
+  value: number,
+) {
+  let track = findKeyframeTrack(project.keyframeTracks, targetId, property);
+  if (!track) {
+    track = createNumericTrack(targetId, property);
+    project.keyframeTracks.push(track);
+  }
+  if (track.valueType === "number")
+    upsertNumericKeyframe(track, Math.max(0, Math.round(frame)), value, {
+      easing: "ease-in-out",
+    });
+}
+
+function setColorKeyframe(
+  project: TemplateProject,
+  targetId: string,
+  property: Extract<KeyframeTrack, { valueType: "color" }>["property"],
+  frame: number,
+  value: string,
+) {
+  let track = findKeyframeTrack(project.keyframeTracks, targetId, property);
+  if (!track) {
+    track = createColorTrack(targetId, property);
+    project.keyframeTracks.push(track);
+  }
+  if (track.valueType === "color")
+    upsertColorKeyframe(track, Math.max(0, Math.round(frame)), value, {
+      easing: "ease-in-out",
+    });
 }
 function createTemplateThumbnail(project: TemplateProject) {
   const title =

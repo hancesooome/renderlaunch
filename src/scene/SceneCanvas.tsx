@@ -37,6 +37,10 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { TemplateProject } from "../project/schema";
 import type { TransformMode } from "../store/editorStore";
 import { evaluateDeviceFrame } from "../animation/presets";
+import {
+  evaluateColorProperty,
+  evaluateNumericProperty,
+} from "../animation/keyframes";
 import { useAssetUrl } from "../model/useAssetUrl";
 
 type TransformValue = {
@@ -87,6 +91,65 @@ export function SceneCanvas({
   };
   const lightingVisible =
     project.layers.find((layer) => layer.type === "lighting")?.visible ?? true;
+  const lightingId =
+      project.layers.find((layer) => layer.type === "lighting")?.id ??
+      "lighting",
+    animatedLighting = {
+      environmentIntensity: evaluateNumericProperty(
+        project.keyframeTracks,
+        lightingId,
+        "lighting.environmentIntensity",
+        frame,
+        project.lighting.environmentIntensity,
+      ),
+      keyIntensity: evaluateNumericProperty(
+        project.keyframeTracks,
+        lightingId,
+        "lighting.keyIntensity",
+        frame,
+        project.lighting.keyIntensity,
+      ),
+      fillIntensity: evaluateNumericProperty(
+        project.keyframeTracks,
+        lightingId,
+        "lighting.fillIntensity",
+        frame,
+        project.lighting.fillIntensity,
+      ),
+      shadowOpacity: evaluateNumericProperty(
+        project.keyframeTracks,
+        lightingId,
+        "lighting.shadowOpacity",
+        frame,
+        project.lighting.shadowOpacity,
+      ),
+      shadowSoftness: evaluateNumericProperty(
+        project.keyframeTracks,
+        lightingId,
+        "lighting.shadowSoftness",
+        frame,
+        project.lighting.shadowSoftness,
+      ),
+      keyColor: evaluateColorProperty(
+        project.keyframeTracks,
+        lightingId,
+        "lighting.keyColor",
+        frame,
+        project.lighting.keyColor,
+      ),
+      keyPosition: project.lighting.keyPosition.map((value, index) =>
+        evaluateNumericProperty(
+          project.keyframeTracks,
+          lightingId,
+          `lighting.keyPosition.${["x", "y", "z"][index]}` as
+            | "lighting.keyPosition.x"
+            | "lighting.keyPosition.y"
+            | "lighting.keyPosition.z",
+          frame,
+          value,
+        ),
+      ) as [number, number, number],
+    };
   useEffect(() => setBounds(undefined), [url]);
   if (!url)
     return (
@@ -113,13 +176,13 @@ export function SceneCanvas({
         gl={{ antialias: true, preserveDrawingBuffer: true }}
       >
         <ambientLight
-          intensity={lightingVisible ? project.lighting.fillIntensity : 0}
+          intensity={lightingVisible ? animatedLighting.fillIntensity : 0}
         />
         <directionalLight
           castShadow
-          color={project.lighting.keyColor}
-          position={project.lighting.keyPosition}
-          intensity={lightingVisible ? project.lighting.keyIntensity : 0}
+          color={animatedLighting.keyColor}
+          position={animatedLighting.keyPosition}
+          intensity={lightingVisible ? animatedLighting.keyIntensity : 0}
         />
         <Suspense fallback={null}>
           <LoadedModel
@@ -138,19 +201,20 @@ export function SceneCanvas({
             <>
               <Environment
                 preset="studio"
-                environmentIntensity={project.lighting.environmentIntensity}
+                environmentIntensity={animatedLighting.environmentIntensity}
               />
               <ContactShadows
                 position={[0, 0, 0]}
-                opacity={project.lighting.shadowOpacity}
+                opacity={animatedLighting.shadowOpacity}
                 scale={10}
-                blur={project.lighting.shadowSoftness}
+                blur={animatedLighting.shadowSoftness}
               />
             </>
           )}
         </Suspense>
         <CameraController
           project={project}
+          frame={frame}
           bounds={bounds}
           frameRequest={frameRequest}
           autoFrame={autoFrame}
@@ -211,13 +275,51 @@ function LoadedModel({
     dragging = useRef(false),
     pendingTransform = useRef<TransformValue | undefined>(undefined),
     model = project.model!;
+  const screenLayer = project.layers.find(
+      (layer) => layer.type === "screen-media",
+    ),
+    screenId = screenLayer?.id ?? "media",
+    animatedScreen = project.screen
+      ? {
+          ...project.screen,
+          offset: project.screen.offset.map((value, index) =>
+            evaluateNumericProperty(
+              project.keyframeTracks,
+              screenId,
+              `screen.offset.${index === 0 ? "x" : "y"}` as
+                "screen.offset.x" | "screen.offset.y",
+              frame,
+              value,
+            ),
+          ) as [number, number],
+          scale: project.screen.scale.map((value, index) =>
+            evaluateNumericProperty(
+              project.keyframeTracks,
+              screenId,
+              `screen.scale.${index === 0 ? "x" : "y"}` as
+                "screen.scale.x" | "screen.scale.y",
+              frame,
+              value,
+            ),
+          ) as [number, number],
+          emissionIntensity:
+            project.screen.emissionIntensity *
+            evaluateNumericProperty(
+              project.keyframeTracks,
+              screenId,
+              "screen.opacity",
+              frame,
+              1,
+            ),
+        }
+      : null,
+    animatedProject = { ...project, screen: animatedScreen };
   const screenTexture = useScreenTexture(
-      project,
+      animatedProject,
       screenUrl,
       frame,
       onMediaFrameReady,
     ),
-    screenLayer = project.layers.find((layer) => layer.type === "screen-media"),
     screenActive = Boolean(
       screenLayer?.visible &&
       frame >= screenLayer.startFrame &&
@@ -244,7 +346,7 @@ function LoadedModel({
     onReady?.();
   }, [normalization, onBounds, onReady]);
   useEffect(() => {
-    const screen = project.screen;
+    const screen = animatedScreen;
     if (!screen || screen.mode !== "material" || !mappedTexture) return;
     const replacements: Array<{
       mesh: Mesh;
@@ -278,7 +380,7 @@ function LoadedModel({
         mesh.material = original;
         created.forEach((material) => material.dispose());
       });
-  }, [project.screen, scene, mappedTexture]);
+  }, [animatedScreen, scene, mappedTexture]);
   const captureTransform = () => {
     const value = group.current;
     if (!value) return;
@@ -308,15 +410,44 @@ function LoadedModel({
     };
   });
   const animation = evaluateDeviceFrame(project, frame);
-  const pivot = model.pivot;
+  const deviceId =
+      project.layers.find((layer) => layer.type === "device")?.id ?? "phone",
+    animatedPosition = model.position.map((value, index) =>
+      evaluateNumericProperty(
+        project.keyframeTracks,
+        deviceId,
+        `device.position.${["x", "y", "z"][index]}` as
+          "device.position.x" | "device.position.y" | "device.position.z",
+        frame,
+        value,
+      ),
+    ) as [number, number, number],
+    animatedRotation = model.rotation.map((value, index) =>
+      evaluateNumericProperty(
+        project.keyframeTracks,
+        deviceId,
+        `device.rotation.${["x", "y", "z"][index]}` as
+          "device.rotation.x" | "device.rotation.y" | "device.rotation.z",
+        frame,
+        value,
+      ),
+    ) as [number, number, number],
+    animatedScale = evaluateNumericProperty(
+      project.keyframeTracks,
+      deviceId,
+      "device.scale",
+      frame,
+      model.scale,
+    ),
+    pivot = model.pivot;
   const content = (
     <group
       ref={group}
-      position={model.position}
+      position={animatedPosition}
       rotation={
-        model.rotation.map(MathUtils.degToRad) as [number, number, number]
+        animatedRotation.map(MathUtils.degToRad) as [number, number, number]
       }
-      scale={model.scale}
+      scale={animatedScale}
     >
       <group
         position={[pivot[0] + animation.x, pivot[1] + animation.y, pivot[2]]}
@@ -330,8 +461,8 @@ function LoadedModel({
           <group scale={normalization.scale}>
             <primitive object={scene} position={normalization.offset} />
           </group>
-          {project.screen?.mode === "plane" && mappedTexture && (
-            <ScreenPlane project={project} texture={mappedTexture} />
+          {animatedScreen?.mode === "plane" && mappedTexture && (
+            <ScreenPlane project={animatedProject} texture={mappedTexture} />
           )}
         </group>
       </group>
@@ -359,6 +490,7 @@ function LoadedModel({
 
 function CameraController({
   project,
+  frame,
   bounds,
   frameRequest,
   autoFrame,
@@ -366,6 +498,7 @@ function CameraController({
   onCamera,
 }: {
   project: TemplateProject;
+  frame: number;
   bounds?: NormalizedBounds;
   frameRequest: number;
   autoFrame: boolean;
@@ -377,18 +510,51 @@ function CameraController({
     configuration = project.camera,
     autoFramed = useRef(false),
     lastRequest = useRef(frameRequest);
+  const cameraId =
+      project.layers.find((layer) => layer.type === "camera")?.id ?? "camera",
+    animatedConfiguration = configuration
+      ? {
+          position: configuration.position.map((value, index) =>
+            evaluateNumericProperty(
+              project.keyframeTracks,
+              cameraId,
+              `camera.position.${["x", "y", "z"][index]}` as
+                "camera.position.x" | "camera.position.y" | "camera.position.z",
+              frame,
+              value,
+            ),
+          ) as [number, number, number],
+          target: configuration.target.map((value, index) =>
+            evaluateNumericProperty(
+              project.keyframeTracks,
+              cameraId,
+              `camera.target.${["x", "y", "z"][index]}` as
+                "camera.target.x" | "camera.target.y" | "camera.target.z",
+              frame,
+              value,
+            ),
+          ) as [number, number, number],
+          fov: evaluateNumericProperty(
+            project.keyframeTracks,
+            cameraId,
+            "camera.fov",
+            frame,
+            configuration.fov,
+          ),
+        }
+      : undefined;
   useEffect(() => {
-    if (!configuration || !controls.current) return;
-    camera.position.fromArray(configuration.position);
-    (camera as PerspectiveCamera).fov = configuration.fov;
-    controls.current.target.fromArray(configuration.target);
+    if (!animatedConfiguration || !controls.current) return;
+    camera.position.fromArray(animatedConfiguration.position);
+    (camera as PerspectiveCamera).fov = animatedConfiguration.fov;
+    controls.current.target.fromArray(animatedConfiguration.target);
     (camera as PerspectiveCamera).updateProjectionMatrix();
     controls.current.update();
   }, [
     camera,
-    configuration?.position,
-    configuration?.target,
-    configuration?.fov,
+    animatedConfiguration?.position,
+    animatedConfiguration?.target,
+    animatedConfiguration?.fov,
   ]);
   useEffect(() => {
     if (!bounds || !controls.current) return;
@@ -575,7 +741,20 @@ function useScreenTexture(
       return;
     }
     element.pause();
-    const time = (frame / project.canvas.fps) % element.duration,
+    const screenId =
+        project.layers.find((layer) => layer.type === "screen-media")?.id ??
+        "media",
+      playbackOffset = evaluateNumericProperty(
+        project.keyframeTracks,
+        screenId,
+        "screen.playbackOffset",
+        frame,
+        0,
+      ),
+      time =
+        (((frame / project.canvas.fps + playbackOffset) % element.duration) +
+          element.duration) %
+        element.duration,
       tolerance = 1 / project.canvas.fps / 3;
     if (Math.abs(element.currentTime - time) <= tolerance) {
       texture.needsUpdate = true;
