@@ -2337,6 +2337,7 @@ function ExportDialog({
   const stage = useRef<HTMLDivElement>(null),
     cancelled = useRef(false),
     [renderFrame, setRenderFrame] = useState(0),
+    [renderedOutputFrame, setRenderedOutputFrame] = useState(0),
     [progress, setProgress] = useState(0),
     [status, setStatus] = useState<"idle" | "rendering" | "done" | "error">(
       "idle",
@@ -2344,7 +2345,13 @@ function ExportDialog({
     [error, setError] = useState(""),
     [downloadUrl, setDownloadUrl] = useState(""),
     [sceneReady, setSceneReady] = useState(!project.model?.assetId),
-    [mediaReadyFrame, setMediaReadyFrame] = useState(-1);
+    [mediaReadyFrame, setMediaReadyFrame] = useState(-1),
+    [resolution, setResolution] = useState<"720p" | "1080p">("1080p"),
+    [exportFps, setExportFps] = useState<30 | 60>(60);
+  const exportWidth = resolution === "1080p" ? 1920 : 1280,
+    exportHeight = resolution === "1080p" ? 1080 : 720,
+    durationSeconds = project.canvas.durationInFrames / project.canvas.fps,
+    totalExportFrames = Math.round(durationSeconds * exportFps);
   useEffect(
     () => () => {
       cancelled.current = true;
@@ -2358,15 +2365,18 @@ function ExportDialog({
     setStatus("rendering");
     setError("");
     setProgress(0);
+    setRenderedOutputFrame(0);
     if (downloadUrl) URL.revokeObjectURL(downloadUrl);
     setDownloadUrl("");
     try {
       const blob = await renderProjectMp4(
         project,
         stage.current,
-        (frame) => {
-          setRenderFrame(frame);
-          setProgress((frame / project.canvas.durationInFrames) * 100);
+        { width: exportWidth, height: exportHeight, fps: exportFps },
+        (sourceFrame, outputFrame, totalFrames) => {
+          setRenderFrame(sourceFrame);
+          setRenderedOutputFrame(outputFrame);
+          setProgress((outputFrame / totalFrames) * 100);
         },
         () => cancelled.current,
       );
@@ -2405,17 +2415,37 @@ function ExportDialog({
           </button>
         </div>
         <div className="renderSettings">
-          <span>
-            Resolution <b>1280 × 720</b>
-          </span>
-          <span>
-            Frame rate <b>30 FPS</b>
-          </span>
+          <label>
+            Resolution
+            <select
+              value={resolution}
+              disabled={status === "rendering"}
+              onChange={(event) =>
+                setResolution(event.target.value as "720p" | "1080p")
+              }
+            >
+              <option value="1080p">1920 × 1080 (Full HD)</option>
+              <option value="720p">1280 × 720 (Draft)</option>
+            </select>
+          </label>
+          <label>
+            Frame rate
+            <select
+              value={exportFps}
+              disabled={status === "rendering"}
+              onChange={(event) =>
+                setExportFps(Number(event.target.value) as 30 | 60)
+              }
+            >
+              <option value="60">60 FPS</option>
+              <option value="30">30 FPS</option>
+            </select>
+          </label>
           <span>
             Format <b>H.264 MP4</b>
           </span>
           <span>
-            Duration <b>{project.canvas.durationInFrames / 30}s</b>
+            Duration <b>{durationSeconds}s</b>
           </span>
         </div>
         {status === "rendering" && (
@@ -2425,8 +2455,8 @@ function ExportDialog({
             </div>
             <span>
               Rendering frame{" "}
-              {Math.min(renderFrame + 1, project.canvas.durationInFrames)} of{" "}
-              {project.canvas.durationInFrames}
+              {Math.min(renderedOutputFrame + 1, totalExportFrames)} of{" "}
+              {totalExportFrames}
             </span>
             <b>{Math.round(progress)}%</b>
           </div>
@@ -2520,7 +2550,12 @@ function ExportDialog({
 async function renderProjectMp4(
   project: TemplateProject,
   stage: HTMLDivElement,
-  onFrame: (frame: number) => void,
+  settings: { width: number; height: number; fps: 30 | 60 },
+  onFrame: (
+    sourceFrame: number,
+    outputFrame: number,
+    totalFrames: number,
+  ) => void,
   isCancelled: () => boolean,
 ) {
   if (!("VideoEncoder" in window) || !("VideoFrame" in window))
@@ -2548,11 +2583,11 @@ async function renderProjectMp4(
   const { toCanvas } = await import("html-to-image"),
     { ArrayBufferTarget, Muxer } = await import("mp4-muxer"),
     config: VideoEncoderConfig = {
-      codec: "avc1.42001f",
-      width: 1280,
-      height: 720,
-      bitrate: 6_000_000,
-      framerate: project.canvas.fps,
+      codec: "avc1.42002a",
+      width: settings.width,
+      height: settings.height,
+      bitrate: settings.width >= 1920 ? 16_000_000 : 8_000_000,
+      framerate: settings.fps,
       avc: { format: "avc" },
     },
     support = await VideoEncoder.isConfigSupported(config);
@@ -2563,7 +2598,7 @@ async function renderProjectMp4(
   const target = new ArrayBufferTarget(),
     muxer = new Muxer({
       target,
-      video: { codec: "avc", width: 1280, height: 720 },
+      video: { codec: "avc", width: settings.width, height: settings.height },
       fastStart: "in-memory",
       firstTimestampBehavior: "offset",
     });
@@ -2575,30 +2610,35 @@ async function renderProjectMp4(
     },
   });
   encoder.configure(config);
-  for (let frame = 0; frame < project.canvas.durationInFrames; frame += 1) {
+  const durationSeconds = project.canvas.durationInFrames / project.canvas.fps,
+    totalFrames = Math.round(durationSeconds * settings.fps);
+  for (let outputFrame = 0; outputFrame < totalFrames; outputFrame += 1) {
     if (isCancelled()) break;
-    onFrame(frame);
+    const sourceFrame = (outputFrame / settings.fps) * project.canvas.fps;
+    onFrame(sourceFrame, outputFrame, totalFrames);
     await nextPaint();
     if (project.screen?.mediaType === "video")
-      await waitForMediaFrame(stage, frame, isCancelled);
+      await waitForMediaFrame(stage, sourceFrame, isCancelled);
     const canvas = await toCanvas(stage, {
       width: 1280,
       height: 720,
-      canvasWidth: 1280,
-      canvasHeight: 720,
+      canvasWidth: settings.width,
+      canvasHeight: settings.height,
       pixelRatio: 1,
       skipFonts: true,
       cacheBust: false,
     });
-    if (frame === 0 && isCapturedFrameBlank(canvas))
+    if (outputFrame === 0 && isCapturedFrameBlank(canvas))
       throw new Error(
         "The first rendered frame is blank. The export was stopped before encoding; retry after the scene is fully visible.",
       );
     const videoFrame = new VideoFrame(canvas, {
-      timestamp: Math.round((frame / project.canvas.fps) * 1_000_000),
-      duration: Math.round(1_000_000 / project.canvas.fps),
+      timestamp: Math.round((outputFrame / settings.fps) * 1_000_000),
+      duration: Math.round(1_000_000 / settings.fps),
     });
-    encoder.encode(videoFrame, { keyFrame: frame % 60 === 0 });
+    encoder.encode(videoFrame, {
+      keyFrame: outputFrame % (settings.fps * 2) === 0,
+    });
     videoFrame.close();
     if (encoder.encodeQueueSize > 8) await encoder.flush();
     if (encoderFailure) throw encoderFailure;
