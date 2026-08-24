@@ -384,6 +384,38 @@ button {
 .audioInspector button svg { width: 13px; }
 .audioInspector button.danger,
 .audioError { color: var(--ui-danger, #ef4444); }
+.masterPreviewStage { container-type: inline-size; }
+.masterOverlays { position: absolute; z-index: 15; inset: 0; overflow: hidden; pointer-events: none; }
+.masterOverlay { position: absolute; padding: .18em .34em; transform: translate(-50%, -50%); line-height: 1.08; white-space: pre-wrap; overflow-wrap: break-word; border-radius: .18em; text-shadow: 0 .03em .12em #0008; }
+.masterOverlay img { width: 100%; max-height: 18cqw; display: block; object-fit: contain; }
+.masterOverlay > span { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; }
+.masterOverlay > span svg { width: 16px; }
+.overlayTrack { height: 42px; margin-top: 3px; display: grid; grid-template-columns: 190px minmax(0, 1fr); overflow: hidden; border: 1px solid var(--ui-border); border-radius: 7px; background: var(--ui-bg); }
+.overlayTrackLabel { display: flex; align-items: center; gap: 7px; padding: 0 9px; border-right: 1px solid var(--ui-border); background: var(--ui-panel); font-size: 10px; }
+.overlayTrackLabel svg { width: 14px; color: #a78bfa; }
+.overlayTrackLane { min-width: 0; overflow-x: auto; overflow-y: hidden; }
+.overlayTrackContent { position: relative; min-width: 100%; height: 100%; }
+.overlayClip { position: absolute; top: 4px; bottom: 4px; min-width: 24px; padding: 0 10px; display: flex; align-items: center; gap: 5px; overflow: hidden; border: 1px solid #a78bfa; border-radius: 5px; background: color-mix(in srgb, #8b5cf6 34%, var(--ui-panel)); cursor: grab; touch-action: none; user-select: none; }
+.overlayClip.selected { outline: 2px solid #c4b5fd; outline-offset: 1px; }
+.overlayClip > svg { width: 12px; min-width: 12px; }
+.overlayClip > b { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.overlayTrim { position: absolute; z-index: 2; top: 0; bottom: 0; width: 8px; padding: 0; cursor: ew-resize; touch-action: none; }
+.overlayTrim.left { left: 0; }
+.overlayTrim.right { right: 0; }
+.overlayInspector { min-height: 38px; margin-top: 7px; padding: 5px 8px; display: flex; align-items: center; gap: 8px; border: 1px solid #8b5cf688; border-radius: 7px; background: var(--ui-panel); }
+.overlayInspector > b { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.overlayInspector > input[aria-label="Overlay text"] { min-width: 120px; flex: 1; }
+.overlayInspector input { height: 25px; min-width: 0; border: 1px solid var(--ui-border); border-radius: 5px; background: var(--ui-surface); }
+.overlayInspector input[type="number"] { width: 48px; }
+.overlayInspector input[type="range"] { width: 62px; accent-color: var(--ui-accent); }
+.overlayInspector input[type="color"] { width: 30px; padding: 2px; }
+.overlayInspector label { display: flex; align-items: center; gap: 4px; color: var(--ui-muted); font-size: 9px; white-space: nowrap; }
+.overlayImageUpload { max-width: 170px; height: 27px; padding: 0 7px; overflow: hidden; border: 1px solid var(--ui-border); border-radius: 6px; color: var(--ui-text) !important; text-overflow: ellipsis; cursor: pointer; }
+.overlayImageUpload svg { width: 12px; }
+.overlayImageUpload input { display: none; }
+.overlayInspector button { height: 27px; padding: 0 7px; display: flex; align-items: center; gap: 4px; border: 1px solid var(--ui-border); border-radius: 6px; }
+.overlayInspector button svg { width: 12px; }
+.overlayInspector .danger { color: var(--ui-danger, #ef4444); }
 .masterTimelineHead {
   height: 36px;
 }
@@ -401,6 +433,9 @@ button {
   align-items: center;
   gap: 7px;
 }
+.overlayAddMenu { display: flex; align-items: center; gap: 3px; }
+.overlayAddMenu button { text-transform: capitalize; font-size: 9px; }
+.overlayAddMenu button svg { width: 11px; }
 .masterTimelineTools button {
   height: 28px;
   min-width: 28px;

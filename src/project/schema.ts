@@ -18,6 +18,7 @@ export const sceneTransitionTypeSchema = z.enum([
   "blur",
 ]);
 export const audioTrackTypeSchema = z.enum(["music", "voiceover", "sfx"]);
+export const globalOverlayTypeSchema = z.enum(["title", "caption", "cta", "logo", "watermark"]);
 
 export const keyframeEasingSchema = z.enum([
   "linear",
@@ -359,6 +360,26 @@ export const audioTrackSchema = z.object({
   clips: z.array(audioClipSchema).default([]),
 });
 
+export const globalOverlaySchema = z.object({
+  id: z.string().min(1),
+  type: globalOverlayTypeSchema,
+  name: z.string().min(1),
+  startFrame: z.number().int().nonnegative(),
+  durationInFrames: z.number().int().positive(),
+  x: z.number().min(0).max(100),
+  y: z.number().min(0).max(100),
+  width: z.number().min(5).max(100),
+  content: z.string().default(""),
+  assetId: z.string().optional(),
+  fileName: z.string().optional(),
+  fontSize: z.number().min(8).max(240).default(52),
+  fontWeight: z.number().int().min(100).max(900).default(700),
+  color: z.string().default("#ffffff"),
+  backgroundColor: z.string().default("transparent"),
+  opacity: z.number().min(0).max(1).default(1),
+  textAlign: z.enum(["left", "center", "right"]).default("center"),
+});
+
 export const defaultAudioTracks = () => [
   { id: "music", name: "Music", type: "music" as const, muted: false, volume: 1, clips: [] },
   { id: "voiceover", name: "Voice-over", type: "voiceover" as const, muted: false, volume: 1, clips: [] },
@@ -376,6 +397,7 @@ export const videoProjectSchema = z.object({
   }),
   scenes: z.array(videoSceneSchema).min(1),
   audioTracks: z.array(audioTrackSchema).default([]),
+  globalOverlays: z.array(globalOverlaySchema).default([]),
   activeSceneId: z.string().min(1),
   thumbnailDataUrl: z.string().optional(),
   createdAt: z.string(),
@@ -420,6 +442,7 @@ export function migrateVideoProjectData(value: unknown): unknown {
         Array.isArray(candidate.audioTracks) && candidate.audioTracks.length
           ? candidate.audioTracks
           : defaultAudioTracks(),
+      globalOverlays: candidate.globalOverlays ?? [],
     };
   const migratedComposition = migrateProjectData(value) as Record<
     string,
@@ -459,6 +482,7 @@ export function migrateVideoProjectData(value: unknown): unknown {
       { id: "voiceover", name: "Voice-over", type: "voiceover", muted: false, volume: 1, clips: [] },
       { id: "sfx", name: "Sound Effects", type: "sfx", muted: false, volume: 1, clips: [] },
     ],
+    globalOverlays: [],
     thumbnailDataUrl: migratedComposition.thumbnailDataUrl,
     createdAt,
     updatedAt,
@@ -472,6 +496,8 @@ export type SceneTransitionType = z.infer<typeof sceneTransitionTypeSchema>;
 export type AudioTrack = z.infer<typeof audioTrackSchema>;
 export type AudioClip = z.infer<typeof audioClipSchema>;
 export type AudioTrackType = z.infer<typeof audioTrackTypeSchema>;
+export type GlobalOverlay = z.infer<typeof globalOverlaySchema>;
+export type GlobalOverlayType = z.infer<typeof globalOverlayTypeSchema>;
 export type ProjectLayer = z.infer<typeof layerSchema>;
 export type KeyframeTrack = z.infer<typeof keyframeTrackSchema>;
 export type TextAnimationPreset = z.infer<typeof textAnimationPresetSchema>;

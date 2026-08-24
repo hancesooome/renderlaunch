@@ -227,6 +227,7 @@ export function createDefaultVideoProject(): VideoProject {
         clips: [],
       },
     ],
+    globalOverlays: [],
     createdAt: composition.createdAt,
     updatedAt: composition.updatedAt,
   };

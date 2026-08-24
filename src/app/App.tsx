@@ -34,6 +34,8 @@ import type {
   SceneTransitionType,
   AudioClip,
   AudioTrack,
+  GlobalOverlay,
+  GlobalOverlayType,
 } from "../project/schema";
 import {
   resolveMasterFrame,
@@ -833,6 +835,7 @@ function VideoEditorWorkspace({
   const [masterZoom, setMasterZoom] = useState(1),
     [draggedSceneId, setDraggedSceneId] = useState<string>(),
     [selectedAudio, setSelectedAudio] = useState<{ trackId: string; clipId: string }>(),
+    [selectedOverlayId, setSelectedOverlayId] = useState<string>(),
     [audioError, setAudioError] = useState(""),
     [trimPreview, setTrimPreview] = useState<{
       id: string;
@@ -844,6 +847,9 @@ function VideoEditorWorkspace({
     deleteAudioClip = useEditorStore((state) => state.deleteAudioClip),
     setAudioTrackMuted = useEditorStore((state) => state.setAudioTrackMuted),
     setAudioTrackVolume = useEditorStore((state) => state.setAudioTrackVolume);
+  const addGlobalOverlay = useEditorStore((state) => state.addGlobalOverlay),
+    updateGlobalOverlay = useEditorStore((state) => state.updateGlobalOverlay),
+    deleteGlobalOverlay = useEditorStore((state) => state.deleteGlobalOverlay);
   const normalizedVideoProject = {
       ...videoProject,
       scenes: videoProject.scenes.map((scene) => ({
@@ -885,6 +891,7 @@ function VideoEditorWorkspace({
         .find((track) => track.id === selectedAudio.trackId)
         ?.clips.find((clip) => clip.id === selectedAudio.clipId)
     : undefined;
+  const selectedOverlay = videoProject.globalOverlays.find((overlay) => overlay.id === selectedOverlayId);
   const uploadAudio = async (trackId: string, file?: File) => {
     if (!file) return;
     setAudioError("");
@@ -911,6 +918,12 @@ function VideoEditorWorkspace({
     } catch (error) {
       setAudioError(error instanceof Error ? error.message : "The audio could not be loaded.");
     }
+  };
+  const uploadOverlayImage = async (overlayId: string, file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setAudioError("Choose an image file for the overlay."); return; }
+    const assetId = await saveAsset(file);
+    updateGlobalOverlay(overlayId, { assetId, fileName: file.name });
   };
   useEffect(() => {
     const shortcuts = (event: KeyboardEvent) => {
@@ -1157,6 +1170,7 @@ function VideoEditorWorkspace({
             ) : (
               <ScenePreviewLayer project={project} frame={renderFrame} />
             )}
+            <MasterOverlays overlays={videoProject.globalOverlays} frame={shownMasterFrame} />
           </div>
           <div className="masterPreviewControls">
             <button onClick={() => onPlay(!playing)}>
@@ -1191,6 +1205,13 @@ function VideoEditorWorkspace({
             <small>Scene assembly</small>
           </div>
           <div className="masterTimelineTools">
+            <div className="overlayAddMenu">
+              {(["title", "caption", "cta", "logo", "watermark"] as GlobalOverlayType[]).map((type) => (
+                <button key={type} title={`Add ${type}`} onClick={() => addGlobalOverlay(type, shownMasterFrame)}>
+                  {type === "logo" || type === "watermark" ? <I.ImagePlus /> : <I.Type />} {type}
+                </button>
+              ))}
+            </div>
             <button
               title="Split selected scene at playhead"
               disabled={
@@ -1371,6 +1392,37 @@ function VideoEditorWorkspace({
             </div>
           ))}
         </div>
+        <div className="overlayTrack">
+          <div className="overlayTrackLabel"><I.Layers2 /><b>Global overlays</b></div>
+          <div className="overlayTrackLane">
+            <div className="overlayTrackContent" style={{ width: `${masterZoom * 100}%` }}>
+              {videoProject.globalOverlays.map((overlay) => (
+                <OverlayTimelineClip
+                  key={overlay.id}
+                  overlay={overlay}
+                  totalFrames={totalFrames}
+                  selected={overlay.id === selectedOverlayId}
+                  onSelect={() => { setSelectedOverlayId(overlay.id); setSelectedAudio(undefined); }}
+                  onChange={(patch) => updateGlobalOverlay(overlay.id, patch)}
+                />
+              ))}
+              <div className="masterPlayhead" style={{ left: `${(shownMasterFrame / Math.max(1, totalFrames)) * 100}%` }} />
+            </div>
+          </div>
+        </div>
+        {selectedOverlay && (
+          <div className="overlayInspector">
+            <b>{selectedOverlay.name}</b>
+            {!(["logo", "watermark"] as GlobalOverlayType[]).includes(selectedOverlay.type) && <input aria-label="Overlay text" value={selectedOverlay.content} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { content: event.target.value })} />}
+            {(selectedOverlay.type === "logo" || selectedOverlay.type === "watermark") && <label className="overlayImageUpload"><I.Upload /> {selectedOverlay.fileName ?? "Upload image"}<input type="file" accept="image/*" onChange={(event) => void uploadOverlayImage(selectedOverlay.id, event.target.files?.[0])} /></label>}
+            <label>X <input type="number" min="0" max="100" value={selectedOverlay.x} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { x: clamp(Number(event.target.value), 0, 100) })} /></label>
+            <label>Y <input type="number" min="0" max="100" value={selectedOverlay.y} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { y: clamp(Number(event.target.value), 0, 100) })} /></label>
+            <label>Width <input type="number" min="5" max="100" value={selectedOverlay.width} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { width: clamp(Number(event.target.value), 5, 100) })} /></label>
+            <label>Opacity <input type="range" min="0" max="1" step=".05" value={selectedOverlay.opacity} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { opacity: Number(event.target.value) })} /></label>
+            {!(["logo", "watermark"] as GlobalOverlayType[]).includes(selectedOverlay.type) && <><label>Size <input type="number" min="8" max="240" value={selectedOverlay.fontSize} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { fontSize: clamp(Number(event.target.value), 8, 240) })} /></label><input aria-label="Overlay color" type="color" value={selectedOverlay.color} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { color: event.target.value })} /></>}
+            <button className="danger" onClick={() => { deleteGlobalOverlay(selectedOverlay.id); setSelectedOverlayId(undefined); }}><I.Trash2 /> Delete</button>
+          </div>
+        )}
         {selectedClip && selectedAudio && (
           <div className="audioInspector">
             <b>{selectedClip.fileName}</b>
@@ -1385,6 +1437,46 @@ function VideoEditorWorkspace({
       </section>
     </main>
   );
+}
+
+function MasterOverlays({ overlays, frame }: { overlays: GlobalOverlay[]; frame: number }) {
+  return <div className="masterOverlays">{overlays.filter((overlay) => frame >= overlay.startFrame && frame < overlay.startFrame + overlay.durationInFrames).map((overlay) => <MasterOverlay key={overlay.id} overlay={overlay} />)}</div>;
+}
+
+function MasterOverlay({ overlay }: { overlay: GlobalOverlay }) {
+  const asset = useAssetUrl(overlay.assetId), image = overlay.type === "logo" || overlay.type === "watermark";
+  return (
+    <div className={`masterOverlay ${overlay.type}`} style={{ left: `${overlay.x}%`, top: `${overlay.y}%`, width: `${overlay.width}%`, opacity: overlay.opacity, color: overlay.color, background: overlay.backgroundColor, fontSize: `${overlay.fontSize / 12.8}cqw`, fontWeight: overlay.fontWeight, textAlign: overlay.textAlign }}>
+      {image ? asset.url ? <img src={asset.url} alt={overlay.name} /> : <span><I.Image /> {overlay.name}</span> : overlay.content}
+    </div>
+  );
+}
+
+function OverlayTimelineClip({ overlay, totalFrames, selected, onSelect, onChange }: { overlay: GlobalOverlay; totalFrames: number; selected: boolean; onSelect: () => void; onChange: (patch: Partial<GlobalOverlay>) => void }) {
+  const beginDrag = (event: React.PointerEvent<HTMLElement>, edge?: "left" | "right") => {
+    event.preventDefault(); event.stopPropagation(); onSelect();
+    const target = event.currentTarget.closest<HTMLElement>(".overlayClip")!, lane = target.closest<HTMLElement>(".overlayTrackContent")!, startX = event.clientX,
+      original = { start: overlay.startFrame, duration: overlay.durationInFrames };
+    target.setPointerCapture(event.pointerId);
+    let patch: Partial<GlobalOverlay> = {};
+    const move = (pointerEvent: globalThis.PointerEvent) => {
+      const delta = Math.round(((pointerEvent.clientX - startX) / Math.max(1, lane.getBoundingClientRect().width)) * totalFrames);
+      if (edge === "left") {
+        const applied = Math.round(clamp(delta, -original.start, original.duration - 1));
+        patch = { startFrame: original.start + applied, durationInFrames: original.duration - applied };
+      } else if (edge === "right") patch = { durationInFrames: Math.round(clamp(original.duration + delta, 1, totalFrames - original.start)) };
+      else patch = { startFrame: Math.round(clamp(original.start + delta, 0, totalFrames - original.duration)) };
+      target.style.left = `${((patch.startFrame ?? original.start) / totalFrames) * 100}%`;
+      target.style.width = `${((patch.durationInFrames ?? original.duration) / totalFrames) * 100}%`;
+    };
+    const end = () => { target.removeEventListener("pointermove", move); target.removeEventListener("pointerup", end); target.removeEventListener("pointercancel", end); if (Object.keys(patch).length) onChange(patch); };
+    target.addEventListener("pointermove", move); target.addEventListener("pointerup", end); target.addEventListener("pointercancel", end);
+  };
+  return <div className={`overlayClip ${selected ? "selected" : ""}`} style={{ left: `${(overlay.startFrame / totalFrames) * 100}%`, width: `${(overlay.durationInFrames / totalFrames) * 100}%` }} onPointerDown={beginDrag}>
+    <button className="overlayTrim left" onPointerDown={(event) => beginDrag(event, "left")} />
+    {overlay.type === "logo" || overlay.type === "watermark" ? <I.Image /> : <I.Type />}<b>{overlay.name}</b>
+    <button className="overlayTrim right" onPointerDown={(event) => beginDrag(event, "right")} />
+  </div>;
 }
 
 async function inspectAudio(file: File, fps: number) {

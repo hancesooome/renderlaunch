@@ -10,6 +10,8 @@ import type {
   VideoScene,
   SceneTransitionType,
   AudioClip,
+  GlobalOverlay,
+  GlobalOverlayType,
 } from "../project/schema";
 import { defaultAudioTracks } from "../project/schema";
 import { loadRecentProject, saveProject } from "../persistence/database";
@@ -77,6 +79,9 @@ type EditorState = {
   deleteAudioClip: (trackId: string, clipId: string) => void;
   setAudioTrackMuted: (trackId: string, muted: boolean) => void;
   setAudioTrackVolume: (trackId: string, volume: number) => void;
+  addGlobalOverlay: (type: GlobalOverlayType, startFrame: number) => void;
+  updateGlobalOverlay: (overlayId: string, patch: Partial<GlobalOverlay>) => void;
+  deleteGlobalOverlay: (overlayId: string) => void;
   undo: () => void;
   redo: () => void;
   persist: () => Promise<void>;
@@ -603,6 +608,37 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         if (track) track.volume = clamp(volume, 0, 2);
         draft.updatedAt = new Date().toISOString();
       });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
+  addGlobalOverlay: (type, startFrame) =>
+    set((state) => {
+      const labels: Record<GlobalOverlayType, string> = { title: "Opening Title", caption: "Caption", cta: "Call to Action", logo: "Logo", watermark: "Watermark" },
+        text: Record<GlobalOverlayType, string> = { title: "Your launch starts here", caption: "A clear supporting message", cta: "Get started today", logo: "", watermark: "" },
+        totalFrames = orderedScenes(state.videoProject).reduce((sum, scene) => sum + scene.durationInFrames, 0),
+        overlay: GlobalOverlay = {
+          id: crypto.randomUUID(), type, name: labels[type], startFrame: Math.round(clamp(startFrame, 0, Math.max(0, totalFrames - 1))),
+          durationInFrames: Math.max(1, Math.min(type === "caption" ? 90 : 150, totalFrames - Math.round(clamp(startFrame, 0, Math.max(0, totalFrames - 1))))),
+          x: 50, y: type === "caption" || type === "cta" ? 82 : type === "watermark" ? 10 : 50,
+          width: type === "logo" || type === "watermark" ? 18 : 70, content: text[type],
+          fontSize: type === "title" ? 64 : type === "caption" ? 30 : 36, fontWeight: type === "caption" ? 500 : 700,
+          color: "#ffffff", backgroundColor: type === "caption" || type === "cta" ? "#111827cc" : "transparent",
+          opacity: type === "watermark" ? 0.55 : 1, textAlign: "center",
+        },
+        videoProject = produce(state.videoProject, (draft) => { draft.globalOverlays.push(overlay); draft.updatedAt = new Date().toISOString(); });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
+  updateGlobalOverlay: (overlayId, patch) =>
+    set((state) => {
+      const videoProject = produce(state.videoProject, (draft) => {
+        const overlay = draft.globalOverlays.find((item) => item.id === overlayId);
+        if (overlay) Object.assign(overlay, patch);
+        draft.updatedAt = new Date().toISOString();
+      });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
+  deleteGlobalOverlay: (overlayId) =>
+    set((state) => {
+      const videoProject = produce(state.videoProject, (draft) => { draft.globalOverlays = draft.globalOverlays.filter((item) => item.id !== overlayId); draft.updatedAt = new Date().toISOString(); });
       return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
     }),
   undo: () =>
