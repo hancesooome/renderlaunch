@@ -145,6 +145,25 @@ export function App() {
     window.addEventListener("resize", enforceTimelineLimit);
     return () => window.removeEventListener("resize", enforceTimelineLimit);
   }, []);
+  useEffect(() => {
+    const togglePlayback = (event: KeyboardEvent) => {
+      if (event.code !== "Space" || event.repeat) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement &&
+          (target.isContentEditable || target.getAttribute("role") === "textbox"))
+      )
+        return;
+      event.preventDefault();
+      const state = useEditorStore.getState();
+      state.setPlaying(!state.playing);
+    };
+    window.addEventListener("keydown", togglePlayback);
+    return () => window.removeEventListener("keydown", togglePlayback);
+  }, []);
   const resizeTimeline = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const handle = event.currentTarget,
