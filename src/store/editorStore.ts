@@ -8,9 +8,15 @@ import type {
   TemplateProject,
   VideoProject,
   VideoScene,
+  SceneTransitionType,
 } from "../project/schema";
 import { loadRecentProject, saveProject } from "../persistence/database";
 import { clamp } from "../animation/frame";
+import {
+  orderedScenes,
+  resolveMasterFrame,
+  sceneMasterStart,
+} from "../video/timeline";
 
 type SaveStatus = "loading" | "saved" | "unsaved" | "saving" | "error";
 type ProjectRecipe = (draft: TemplateProject) => void;
@@ -59,6 +65,11 @@ type EditorState = {
     durationInFrames: number,
   ) => void;
   splitScene: (sceneId: string, offsetFrame: number) => void;
+  setSceneTransition: (
+    sceneId: string,
+    type: SceneTransitionType,
+    durationInFrames: number,
+  ) => void;
   undo: () => void;
   redo: () => void;
   persist: () => Promise<void>;
@@ -72,38 +83,6 @@ const normalizeSceneOrder = (scenes: VideoScene[]) =>
   scenes.forEach((scene, order) => {
     scene.order = order;
   });
-const clipDuration = (scene: VideoScene) =>
-  Number.isFinite(scene.durationInFrames)
-    ? scene.durationInFrames
-    : scene.composition.canvas.durationInFrames;
-const orderedScenes = (video: VideoProject) =>
-  [...video.scenes].sort((a, b) => a.order - b.order);
-const sceneMasterStart = (video: VideoProject, sceneId: string) => {
-  let start = 0;
-  for (const scene of orderedScenes(video)) {
-    if (scene.id === sceneId) return start;
-    start += clipDuration(scene);
-  }
-  return 0;
-};
-const resolveMasterFrame = (video: VideoProject, requestedFrame: number) => {
-  const scenes = orderedScenes(video),
-    totalFrames = scenes.reduce((sum, scene) => sum + clipDuration(scene), 0),
-    frame = Math.round(clamp(requestedFrame, 0, Math.max(0, totalFrames - 1)));
-  let start = 0;
-  for (const scene of scenes) {
-    const duration = clipDuration(scene);
-    if (frame < start + duration || scene === scenes[scenes.length - 1])
-      return {
-        scene,
-        localFrame: Math.round(clamp(frame - start, 0, duration - 1)),
-        masterFrame: frame,
-        totalFrames,
-      };
-    start += duration;
-  }
-  return { scene: scenes[0], localFrame: 0, masterFrame: 0, totalFrames };
-};
 
 export const useEditorStore = create<EditorState>((set, get) => ({
   videoProject: initialVideoProject,
@@ -282,6 +261,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             order: draft.scenes.length,
             sourceStartFrame: 0,
             durationInFrames: composition.canvas.durationInFrames,
+            transitionToNext: { type: "cut", durationInFrames: 15 },
             composition,
             createdAt: now,
             updatedAt: now,
@@ -324,6 +304,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             order: sourceIndex + 1,
             sourceStartFrame: source.sourceStartFrame,
             durationInFrames: source.durationInFrames,
+            transitionToNext: source.transitionToNext ?? {
+              type: "cut",
+              durationInFrames: 15,
+            },
             thumbnailDataUrl: source.thumbnailDataUrl,
             composition,
             createdAt: now,
@@ -504,6 +488,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           secondComposition.updatedAt = now;
           first.sourceStartFrame = sourceStartFrame;
           first.durationInFrames = split;
+          const originalTransition = first.transitionToNext ?? {
+            type: "cut",
+            durationInFrames: 15,
+          };
+          first.transitionToNext = { type: "cut", durationInFrames: 15 };
           first.updatedAt = now;
           draft.scenes.splice(sourceIndex + 1, 0, {
             id: secondId,
@@ -511,6 +500,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             order: sourceIndex + 1,
             sourceStartFrame: sourceStartFrame + split,
             durationInFrames: sourceDuration - split,
+            transitionToNext: originalTransition,
             thumbnailDataUrl: first.thumbnailDataUrl,
             composition: secondComposition,
             createdAt: now,
@@ -529,6 +519,36 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         currentFrame: 0,
         playing: false,
         selectedLayerId: "phone",
+        saveStatus: "unsaved",
+      };
+    }),
+  setSceneTransition: (sceneId, type, durationInFrames) =>
+    set((state) => {
+      const scene = state.videoProject.scenes.find(
+        (item) => item.id === sceneId,
+      );
+      if (!scene) return state;
+      const duration = Math.round(clamp(durationInFrames, 1, 90));
+      if (
+        scene.transitionToNext?.type === type &&
+        scene.transitionToNext?.durationInFrames === duration
+      )
+        return state;
+      const now = new Date().toISOString(),
+        videoProject = produce(state.videoProject, (draft) => {
+          const item = draft.scenes.find((value) => value.id === sceneId)!;
+          item.transitionToNext = { type, durationInFrames: duration };
+          item.updatedAt = now;
+          draft.updatedAt = now;
+        }),
+        resolved = resolveMasterFrame(videoProject, state.masterFrame);
+      return {
+        past: [...state.past.slice(-49), state.videoProject],
+        future: [],
+        videoProject,
+        project: resolved.scene.composition,
+        currentFrame: resolved.localFrame,
+        masterFrame: resolved.masterFrame,
         saveStatus: "unsaved",
       };
     }),

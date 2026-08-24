@@ -194,6 +194,7 @@ export function createDefaultVideoProject(): VideoProject {
         order: 0,
         sourceStartFrame: 0,
         durationInFrames: composition.canvas.durationInFrames,
+        transitionToNext: { type: "cut", durationInFrames: 15 },
         composition,
         createdAt: composition.createdAt,
         updatedAt: composition.updatedAt,

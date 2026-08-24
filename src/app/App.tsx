@@ -30,7 +30,14 @@ import type {
   TextAnimationPreset,
   TextCursorStyle,
   VideoProject,
+  VideoScene,
+  SceneTransitionType,
 } from "../project/schema";
+import {
+  resolveMasterFrame,
+  sceneStarts,
+  transitionDuration,
+} from "../video/timeline";
 import { useEditorStore } from "../store/editorStore";
 import type { TransformMode } from "../store/editorStore";
 import { useEditorRuntime } from "../store/useEditorRuntime";
@@ -89,6 +96,7 @@ export function App() {
     reorderScene = useEditorStore((s) => s.reorderScene),
     trimScene = useEditorStore((s) => s.trimScene),
     splitScene = useEditorStore((s) => s.splitScene);
+  const setSceneTransition = useEditorStore((s) => s.setSceneTransition);
   const selected =
     project.layers.find((layer) => layer.id === selectedId) ??
     project.layers[0];
@@ -293,6 +301,7 @@ export function App() {
         onReorderScene={reorderScene}
         onTrimScene={trimScene}
         onSplitScene={splitScene}
+        onSetTransition={setSceneTransition}
         onOpenScene={() => {
           const active = videoProject.scenes.find(
             (scene) => scene.id === videoProject.activeSceneId,
@@ -788,6 +797,7 @@ function VideoEditorWorkspace({
   onReorderScene,
   onTrimScene,
   onSplitScene,
+  onSetTransition,
   onOpenScene,
   onSave,
 }: {
@@ -810,6 +820,11 @@ function VideoEditorWorkspace({
     durationInFrames: number,
   ) => void;
   onSplitScene: (sceneId: string, offsetFrame: number) => void;
+  onSetTransition: (
+    sceneId: string,
+    type: SceneTransitionType,
+    durationInFrames: number,
+  ) => void;
   onOpenScene: () => void;
   onSave: () => void;
 }) {
@@ -820,7 +835,18 @@ function VideoEditorWorkspace({
       sourceStartFrame: number;
       durationInFrames: number;
     }>();
-  const scenes = [...videoProject.scenes]
+  const normalizedVideoProject = {
+      ...videoProject,
+      scenes: videoProject.scenes.map((scene) => ({
+        ...scene,
+        transitionToNext: scene.transitionToNext ?? {
+          type: "cut" as const,
+          durationInFrames: 15,
+        },
+      })),
+    },
+    timeline = sceneStarts(normalizedVideoProject),
+    scenes = [...timeline.scenes]
       .sort((a, b) => a.order - b.order)
       .map((scene) => ({
         ...scene,
@@ -834,22 +860,17 @@ function VideoEditorWorkspace({
     activeScene =
       scenes.find((scene) => scene.id === videoProject.activeSceneId) ??
       scenes[0],
-    totalFrames = scenes.reduce(
-      (sum, scene) => sum + scene.durationInFrames,
-      0,
-    ),
-    framesBeforeActive = scenes
-      .slice(
-        0,
-        scenes.findIndex((scene) => scene.id === activeScene.id),
-      )
-      .reduce((sum, scene) => sum + scene.durationInFrames, 0),
+    totalFrames = timeline.totalFrames,
+    activeIndex = scenes.findIndex((scene) => scene.id === activeScene.id),
+    framesBeforeActive = timeline.starts[Math.max(0, activeIndex)] ?? 0,
     visibleFrame = Math.min(frame, activeScene.durationInFrames - 1),
     renderFrame = activeScene.sourceStartFrame + visibleFrame,
     expectedMasterFrame = framesBeforeActive + visibleFrame,
     shownMasterFrame = Number.isFinite(masterFrame)
       ? masterFrame
-      : expectedMasterFrame;
+      : expectedMasterFrame,
+    playback = resolveMasterFrame(normalizedVideoProject, shownMasterFrame),
+    nextScene = scenes[activeIndex + 1];
   useEffect(() => {
     const shortcuts = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -1036,28 +1057,65 @@ function VideoEditorWorkspace({
               <small>SELECTED SCENE</small>
               <h2>{activeScene.name}</h2>
             </div>
-            <button onClick={onOpenScene}>
-              <I.SquarePen /> Edit Scene
-            </button>
+            <div className="masterPreviewActions">
+              <label>
+                Transition
+                <select
+                  disabled={!nextScene}
+                  value={activeScene.transitionToNext.type}
+                  onChange={(event) =>
+                    onSetTransition(
+                      activeScene.id,
+                      event.target.value as SceneTransitionType,
+                      activeScene.transitionToNext.durationInFrames,
+                    )
+                  }
+                >
+                  <option value="cut">Cut</option>
+                  <option value="crossfade">Crossfade</option>
+                  <option value="fade-black">Fade Through Black</option>
+                  <option value="slide">Slide</option>
+                  <option value="zoom">Zoom</option>
+                  <option value="blur">Blur Dissolve</option>
+                </select>
+              </label>
+              <label>
+                Frames
+                <input
+                  type="number"
+                  min="1"
+                  max="90"
+                  disabled={
+                    !nextScene || activeScene.transitionToNext.type === "cut"
+                  }
+                  value={activeScene.transitionToNext.durationInFrames}
+                  onChange={(event) =>
+                    onSetTransition(
+                      activeScene.id,
+                      activeScene.transitionToNext.type,
+                      Number(event.target.value),
+                    )
+                  }
+                />
+              </label>
+              <button onClick={onOpenScene}>
+                <I.SquarePen /> Edit Scene
+              </button>
+            </div>
           </div>
           <div
             className={`masterPreviewStage ${bgClass(project.background.preset)}`}
-            style={backgroundStyle(project, renderFrame)}
+            style={
+              playback.transition?.from.transitionToNext.type === "fade-black"
+                ? { background: "#000" }
+                : backgroundStyle(project, renderFrame)
+            }
           >
-            <div className="canvasGlow" />
-            {project.model?.assetId ? (
-              isLayerActive(project, "phone", renderFrame) && (
-                <SceneCanvas
-                  project={project}
-                  frame={renderFrame}
-                  autoFrame={false}
-                  cameraControls={false}
-                />
-              )
+            {playback.transition ? (
+              <TransitionPreview transition={playback.transition} />
             ) : (
-              <Phone frame={renderFrame} project={project} />
+              <ScenePreviewLayer project={project} frame={renderFrame} />
             )}
-            <PreviewOverlays project={project} frame={renderFrame} />
           </div>
           <div className="masterPreviewControls">
             <button onClick={() => onPlay(!playing)}>
@@ -1158,13 +1216,15 @@ function VideoEditorWorkspace({
                   className={`masterSceneClip ${scene.id === activeScene.id ? "active" : ""}`}
                   style={{
                     width: `${(preview.durationInFrames / totalFrames) * 100}%`,
+                    marginLeft:
+                      index > 0
+                        ? `${-(transitionDuration(scenes[index - 1], scene) / totalFrames) * 100}%`
+                        : undefined,
                   }}
                   onPointerDown={(event) => {
                     if ((event.target as HTMLElement).closest("button")) return;
                     const rect = event.currentTarget.getBoundingClientRect();
-                    const sceneStart = scenes
-                      .slice(0, index)
-                      .reduce((sum, item) => sum + item.durationInFrames, 0);
+                    const sceneStart = timeline.starts[index] ?? 0;
                     onMasterFrame(
                       sceneStart +
                         clamp(
@@ -1204,6 +1264,12 @@ function VideoEditorWorkspace({
                       scene.composition.canvas.fps,
                     )}
                   </small>
+                  {index < scenes.length - 1 &&
+                    scene.transitionToNext.type !== "cut" && (
+                      <span className="transitionBadge">
+                        <I.Blend /> {scene.transitionToNext.type}
+                      </span>
+                    )}
                   <button
                     className="masterTrimHandle right"
                     title="Trim scene end"
@@ -1216,6 +1282,90 @@ function VideoEditorWorkspace({
         </div>
       </section>
     </main>
+  );
+}
+
+function ScenePreviewLayer({
+  project,
+  frame,
+  style,
+}: {
+  project: TemplateProject;
+  frame: number;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <div
+      className={`scenePreviewLayer ${bgClass(project.background.preset)}`}
+      style={{ ...backgroundStyle(project, frame), ...style }}
+    >
+      <div className="canvasGlow" />
+      {project.model?.assetId ? (
+        isLayerActive(project, "phone", frame) && (
+          <SceneCanvas
+            project={project}
+            frame={frame}
+            autoFrame={false}
+            cameraControls={false}
+          />
+        )
+      ) : (
+        <Phone frame={frame} project={project} />
+      )}
+      <PreviewOverlays project={project} frame={frame} />
+    </div>
+  );
+}
+
+function TransitionPreview({
+  transition,
+}: {
+  transition: NonNullable<ReturnType<typeof resolveMasterFrame>["transition"]>;
+}) {
+  const type = transition.from.transitionToNext.type,
+    progress = transition.progress,
+    fromFrame = transition.from.sourceStartFrame + transition.fromFrame,
+    toFrame = transition.to.sourceStartFrame + transition.toFrame;
+  let fromStyle: React.CSSProperties = { opacity: 1 - progress },
+    toStyle: React.CSSProperties = { opacity: progress };
+  if (type === "fade-black") {
+    fromStyle = { opacity: Math.max(0, 1 - progress * 2) };
+    toStyle = { opacity: Math.max(0, progress * 2 - 1) };
+  } else if (type === "slide") {
+    fromStyle = { transform: `translateX(${-progress * 100}%)` };
+    toStyle = { transform: `translateX(${(1 - progress) * 100}%)` };
+  } else if (type === "zoom") {
+    fromStyle = {
+      opacity: 1 - progress,
+      transform: `scale(${1 + progress * 0.12})`,
+    };
+    toStyle = {
+      opacity: progress,
+      transform: `scale(${0.88 + progress * 0.12})`,
+    };
+  } else if (type === "blur") {
+    fromStyle = {
+      opacity: 1 - progress,
+      filter: `blur(${progress * 18}px)`,
+    };
+    toStyle = {
+      opacity: progress,
+      filter: `blur(${(1 - progress) * 18}px)`,
+    };
+  }
+  return (
+    <>
+      <ScenePreviewLayer
+        project={transition.from.composition}
+        frame={fromFrame}
+        style={fromStyle}
+      />
+      <ScenePreviewLayer
+        project={transition.to.composition}
+        frame={toFrame}
+        style={toStyle}
+      />
+    </>
   );
 }
 

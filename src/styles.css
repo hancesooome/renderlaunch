@@ -219,6 +219,36 @@ button {
 .masterPreviewHead button {
   padding: 0 12px;
 }
+.masterPreviewActions {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+}
+.masterPreviewActions label {
+  display: grid;
+  gap: 3px;
+  color: var(--ui-muted);
+  font-size: 9px;
+}
+.masterPreviewActions select,
+.masterPreviewActions input {
+  height: 32px;
+  border: 1px solid var(--ui-border);
+  border-radius: 7px;
+  padding: 0 8px;
+  background: var(--ui-input);
+  color: var(--ui-text);
+  font-size: 11px;
+}
+.masterPreviewActions select {
+  width: 142px;
+}
+.masterPreviewActions input {
+  width: 66px;
+}
+.masterPreviewActions :disabled {
+  opacity: 0.45;
+}
 .masterPreviewStage {
   position: relative;
   height: 100%;
@@ -229,6 +259,17 @@ button {
   border-radius: 12px;
   isolation: isolate;
   box-shadow: 0 14px 42px var(--ui-shadow);
+}
+.scenePreviewLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  transform-origin: center;
+  will-change: transform, opacity, filter;
+}
+.scenePreviewLayer .threeCanvas {
+  position: absolute;
+  inset: 0;
 }
 .masterPreviewStage .threeCanvas {
   position: absolute;
@@ -358,6 +399,29 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.transitionBadge {
+  position: absolute;
+  z-index: 4;
+  right: 5px;
+  top: 5px;
+  max-width: calc(100% - 10px);
+  height: 19px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: #171b24dd;
+  color: #fff !important;
+  font-size: 8px !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.transitionBadge svg {
+  width: 10px;
+  min-width: 10px;
 }
 .masterTrimHandle {
   position: absolute;

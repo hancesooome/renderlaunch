@@ -9,6 +9,14 @@ export const textAnimationPresetSchema = z.enum([
   "typewriter",
 ]);
 export const textCursorStyleSchema = z.enum(["none", "line", "block"]);
+export const sceneTransitionTypeSchema = z.enum([
+  "cut",
+  "crossfade",
+  "fade-black",
+  "slide",
+  "zoom",
+  "blur",
+]);
 
 export const keyframeEasingSchema = z.enum([
   "linear",
@@ -314,6 +322,12 @@ export const videoSceneSchema = z.object({
   order: z.number().int().nonnegative(),
   sourceStartFrame: z.number().int().nonnegative().default(0),
   durationInFrames: z.number().int().positive().default(450),
+  transitionToNext: z
+    .object({
+      type: sceneTransitionTypeSchema,
+      durationInFrames: z.number().int().min(1).max(90),
+    })
+    .default({ type: "cut", durationInFrames: 15 }),
   thumbnailDataUrl: z.string().optional(),
   composition: projectSchema,
   createdAt: z.string(),
@@ -363,6 +377,10 @@ export function migrateVideoProjectData(value: unknown): unknown {
               sourceStartFrame: item.sourceStartFrame ?? 0,
               durationInFrames:
                 item.durationInFrames ?? canvas?.durationInFrames ?? 450,
+              transitionToNext: item.transitionToNext ?? {
+                type: "cut",
+                durationInFrames: 15,
+              },
             };
           })
         : candidate.scenes,
@@ -392,6 +410,7 @@ export function migrateVideoProjectData(value: unknown): unknown {
         durationInFrames:
           (migratedComposition.canvas as Record<string, unknown>)
             ?.durationInFrames ?? 450,
+        transitionToNext: { type: "cut", durationInFrames: 15 },
         thumbnailDataUrl: migratedComposition.thumbnailDataUrl,
         composition: migratedComposition,
         createdAt,
@@ -408,6 +427,7 @@ export function migrateVideoProjectData(value: unknown): unknown {
 export type TemplateProject = z.infer<typeof projectSchema>;
 export type VideoScene = z.infer<typeof videoSceneSchema>;
 export type VideoProject = z.infer<typeof videoProjectSchema>;
+export type SceneTransitionType = z.infer<typeof sceneTransitionTypeSchema>;
 export type ProjectLayer = z.infer<typeof layerSchema>;
 export type KeyframeTrack = z.infer<typeof keyframeTrackSchema>;
 export type TextAnimationPreset = z.infer<typeof textAnimationPresetSchema>;
