@@ -503,7 +503,12 @@ function CameraController({
     { camera } = useThree(),
     configuration = project.camera,
     autoFramed = useRef(false),
-    lastRequest = useRef(frameRequest);
+    lastRequest = useRef(frameRequest),
+    orbiting = useRef(false),
+    lastOrbitChange = useRef(0),
+    settleFrame = useRef(0),
+    onCameraRef = useRef(onCamera);
+  onCameraRef.current = onCamera;
   const cameraId =
       project.layers.find((layer) => layer.type === "camera")?.id ?? "camera",
     animatedConfiguration = configuration
@@ -538,18 +543,44 @@ function CameraController({
         }
       : undefined;
   useEffect(() => {
-    if (!animatedConfiguration || !controls.current) return;
+    if (!animatedConfiguration || !controls.current || orbiting.current) return;
+    const perspective = camera as PerspectiveCamera,
+      target = controls.current.target,
+      positionChanged =
+        Math.abs(camera.position.x - animatedConfiguration.position[0]) >
+          0.0001 ||
+        Math.abs(camera.position.y - animatedConfiguration.position[1]) >
+          0.0001 ||
+        Math.abs(camera.position.z - animatedConfiguration.position[2]) >
+          0.0001,
+      targetChanged =
+        Math.abs(target.x - animatedConfiguration.target[0]) > 0.0001 ||
+        Math.abs(target.y - animatedConfiguration.target[1]) > 0.0001 ||
+        Math.abs(target.z - animatedConfiguration.target[2]) > 0.0001,
+      fovChanged =
+        Math.abs(perspective.fov - animatedConfiguration.fov) > 0.0001;
+    if (!positionChanged && !targetChanged && !fovChanged) return;
     camera.position.fromArray(animatedConfiguration.position);
-    (camera as PerspectiveCamera).fov = animatedConfiguration.fov;
-    controls.current.target.fromArray(animatedConfiguration.target);
-    (camera as PerspectiveCamera).updateProjectionMatrix();
+    perspective.fov = animatedConfiguration.fov;
+    target.fromArray(animatedConfiguration.target);
+    perspective.updateProjectionMatrix();
     controls.current.update();
   }, [
     camera,
-    animatedConfiguration?.position,
-    animatedConfiguration?.target,
+    animatedConfiguration?.position[0],
+    animatedConfiguration?.position[1],
+    animatedConfiguration?.position[2],
+    animatedConfiguration?.target[0],
+    animatedConfiguration?.target[1],
+    animatedConfiguration?.target[2],
     animatedConfiguration?.fov,
   ]);
+  useEffect(
+    () => () => {
+      if (settleFrame.current) cancelAnimationFrame(settleFrame.current);
+    },
+    [],
+  );
   useEffect(() => {
     if (!bounds || !controls.current) return;
     const explicitRequest = lastRequest.current !== frameRequest;
@@ -597,13 +628,31 @@ function CameraController({
       enabled={enabled}
       enableDamping
       dampingFactor={0.08}
+      onStart={() => {
+        if (settleFrame.current) cancelAnimationFrame(settleFrame.current);
+        settleFrame.current = 0;
+        orbiting.current = true;
+        lastOrbitChange.current = performance.now();
+      }}
+      onChange={() => {
+        if (orbiting.current) lastOrbitChange.current = performance.now();
+      }}
       onEnd={() => {
-        if (!controls.current) return;
-        onCamera?.(
-          camera.position.toArray() as [number, number, number],
-          controls.current.target.toArray() as [number, number, number],
-          "interaction",
-        );
+        const saveWhenSettled = () => {
+          if (performance.now() - lastOrbitChange.current < 100) {
+            settleFrame.current = requestAnimationFrame(saveWhenSettled);
+            return;
+          }
+          settleFrame.current = 0;
+          orbiting.current = false;
+          if (!controls.current) return;
+          onCameraRef.current?.(
+            camera.position.toArray() as [number, number, number],
+            controls.current.target.toArray() as [number, number, number],
+            "interaction",
+          );
+        };
+        settleFrame.current = requestAnimationFrame(saveWhenSettled);
       }}
     />
   );
