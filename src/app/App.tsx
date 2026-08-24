@@ -46,7 +46,7 @@ import { useEditorStore } from "../store/editorStore";
 import type { TransformMode } from "../store/editorStore";
 import { useEditorRuntime } from "../store/useEditorRuntime";
 import { inspectGlb } from "../model/inspectGlb";
-import { deleteProject as deleteStoredProject, deleteSceneTemplate, duplicateStoredProject, listProjects, listSceneTemplates, loadAssetBlob, renameProject as renameStoredProject, saveAsset, saveSceneTemplate, type StoredSceneTemplate } from "../persistence/database";
+import { createAssetFolder, deleteAsset, deleteAssetFolder, deleteProject as deleteStoredProject, deleteSceneTemplate, duplicateAsset, duplicateStoredProject, listAssetFolders, listAssets, listProjects, listSceneTemplates, loadAssetBlob, moveAsset, renameAsset, renameAssetFolder, renameProject as renameStoredProject, saveAsset, saveSceneTemplate, type AssetFolder, type StoredAsset, type StoredSceneTemplate } from "../persistence/database";
 import { SceneCanvas } from "../scene/SceneCanvas";
 import { useAssetUrl } from "../model/useAssetUrl";
 import { useTheme, type ThemePreference } from "../theme/useTheme";
@@ -884,6 +884,12 @@ function VideoEditorWorkspace({
   const [masterZoom, setMasterZoom] = useState(1),
     [masterExporting, setMasterExporting] = useState(false),
     [masterLibraryTab, setMasterLibraryTab] = useState<"scenes" | "assets" | "templates">("scenes"),
+    [libraryAssets, setLibraryAssets] = useState<StoredAsset[]>([]),
+    [assetFolders, setAssetFolders] = useState<AssetFolder[]>([]),
+    [assetFolderId, setAssetFolderId] = useState("all"),
+    [assetSearch, setAssetSearch] = useState(""),
+    [assetFilter, setAssetFilter] = useState<"all" | "image" | "video" | "audio" | "model">("all"),
+    [assetView, setAssetView] = useState<"list" | "grid">("list"),
     [masterLeftWidth, setMasterLeftWidth] = useState(248),
     [masterRightWidth, setMasterRightWidth] = useState(276),
     [masterTimelineHeight, setMasterTimelineHeight] = useState(() => Math.round(clamp(window.innerHeight * .38, 260, 460))),
@@ -946,6 +952,30 @@ function VideoEditorWorkspace({
         ?.clips.find((clip) => clip.id === selectedAudio.clipId)
     : undefined;
   const selectedOverlay = videoProject.globalOverlays.find((overlay) => overlay.id === selectedOverlayId);
+  const refreshAssetLibrary = async () => {
+    const [assets, folders] = await Promise.all([listAssets(), listAssetFolders()]);
+    setLibraryAssets(assets); setAssetFolders(folders);
+  };
+  useEffect(() => { if (masterLibraryTab === "assets") void refreshAssetLibrary(); }, [masterLibraryTab]);
+  const uploadLibraryAssets = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setAudioError("");
+    try {
+      for (const file of Array.from(files)) {
+        const kind = assetMediaKind({ type: file.type, name: file.name });
+        if (kind === "other") throw new Error(`${file.name} is not a supported image, video, audio, or GLB file.`);
+        await saveAsset(file, assetFolderId === "all" || assetFolderId === "root" ? undefined : assetFolderId);
+      }
+      await refreshAssetLibrary();
+    } catch (error) { setAudioError(error instanceof Error ? error.message : "The assets could not be uploaded."); }
+  };
+  const referencedAssetIds = new Set([
+    ...videoProject.scenes.flatMap((scene) => [scene.composition.model?.assetId, scene.composition.screen?.mediaAssetId, ...scene.composition.layers.map((layer) => layer.media?.assetId)]),
+    ...videoProject.audioTracks.flatMap((track) => track.clips.map((clip) => clip.assetId)),
+    ...videoProject.globalOverlays.map((overlay) => overlay.assetId),
+  ].filter((id): id is string => Boolean(id)));
+  const missingAssetIds = [...referencedAssetIds].filter((id) => !libraryAssets.some((asset) => asset.id === id)),
+    filteredLibraryAssets = libraryAssets.filter((asset) => (assetFolderId === "all" || (assetFolderId === "root" ? !asset.folderId : asset.folderId === assetFolderId)) && (assetFilter === "all" || assetMediaKind(asset) === assetFilter) && asset.name.toLowerCase().includes(assetSearch.toLowerCase()));
   const uploadAudio = async (trackId: string, file?: File) => {
     if (!file) return;
     setAudioError("");
@@ -1172,11 +1202,13 @@ function VideoEditorWorkspace({
             </button>
           </div></>}
           {masterLibraryTab === "assets" && <div className="masterAssetList">
-            <div className="masterLibrarySectionHead"><span>Project media</span><button title="Asset library"><I.Plus /></button></div>
-            {activeScene.composition.model && <button><span className="assetKind model"><I.Box /></span><div><b>{activeScene.composition.model.fileName}</b><small>3D model</small></div><I.GripVertical /></button>}
-            {activeScene.composition.screen?.mediaFileName && <button><span className="assetKind video"><I.MonitorPlay /></span><div><b>{activeScene.composition.screen.mediaFileName}</b><small>Screen media</small></div><I.GripVertical /></button>}
-            {videoProject.audioTracks.flatMap((track) => track.clips.map((clip) => <button key={clip.id}><span className="assetKind audio"><I.AudioLines /></span><div><b>{clip.fileName}</b><small>{track.name}</small></div><I.GripVertical /></button>))}
-            {!activeScene.composition.model && !activeScene.composition.screen?.mediaFileName && !videoProject.audioTracks.some((track) => track.clips.length) && <div className="masterPanelEmpty"><I.Files /><b>No project media</b><span>Persistent uploads arrive in Phase 23.</span></div>}
+            <div className="assetLibraryActions"><label title="Upload assets"><I.Upload /><span>Upload</span><input type="file" multiple accept="image/*,video/*,audio/*,.glb,model/gltf-binary" onChange={(event) => void uploadLibraryAssets(event.target.files)} /></label><button title="New folder" onClick={async () => { const name = window.prompt("Folder name")?.trim(); if (name) { const folder = await createAssetFolder(name); await refreshAssetLibrary(); setAssetFolderId(folder.id); } }}><I.FolderPlus /></button><button title={assetView === "list" ? "Grid view" : "List view"} onClick={() => setAssetView((view) => view === "list" ? "grid" : "list")}>{assetView === "list" ? <I.Grid2X2 /> : <I.List />}</button></div>
+            <div className="assetSearch"><I.Search /><input placeholder="Search assets" value={assetSearch} onChange={(event) => setAssetSearch(event.target.value)} /></div>
+            <div className="assetFilters">{(["all", "image", "video", "audio", "model"] as const).map((filter) => <button key={filter} className={assetFilter === filter ? "active" : ""} onClick={() => setAssetFilter(filter)}>{filter}</button>)}</div>
+            <div className="assetFolders"><button className={assetFolderId === "all" ? "active" : ""} onClick={() => setAssetFolderId("all")}><I.Layers3 /> All assets <span>{libraryAssets.length}</span></button><button className={assetFolderId === "root" ? "active" : ""} onClick={() => setAssetFolderId("root")}><I.Folder /> Unfiled</button>{assetFolders.map((folder) => <div key={folder.id} className={assetFolderId === folder.id ? "active" : ""}><button onClick={() => setAssetFolderId(folder.id)}><I.Folder /> {folder.name}</button><button title="Rename folder" onClick={async () => { const name = window.prompt("Rename folder", folder.name)?.trim(); if (name) { await renameAssetFolder(folder.id, name); await refreshAssetLibrary(); } }}><I.Pencil /></button><button title="Delete folder" onClick={async () => { if (window.confirm(`Delete folder “${folder.name}”? Assets will move to Unfiled.`)) { await deleteAssetFolder(folder.id); setAssetFolderId("all"); await refreshAssetLibrary(); } }}><I.X /></button></div>)}</div>
+            {missingAssetIds.length > 0 && <div className="missingAssets"><I.TriangleAlert /><span>{missingAssetIds.length} referenced {missingAssetIds.length === 1 ? "file is" : "files are"} missing</span></div>}
+            <div className={`assetItems ${assetView}`}>{filteredLibraryAssets.map((asset) => <AssetLibraryItem key={asset.id} asset={asset} folders={assetFolders} referenced={referencedAssetIds.has(asset.id)} onRefresh={refreshAssetLibrary} />)}</div>
+            {!filteredLibraryAssets.length && <div className="masterPanelEmpty"><I.Files /><b>No matching assets</b><span>Upload images, videos, audio, or GLB models.</span></div>}
           </div>}
           {masterLibraryTab === "templates" && <div className="masterTemplateShelf"><div className="masterLibrarySectionHead"><span>Reusable scenes</span><button title="Open template library" onClick={onOpenLibrary}><I.Plus /></button></div>{scenes.map((scene) => <button key={scene.id} onDoubleClick={onOpenScene} onClick={() => onSelectScene(scene.id)}><div className={`templateShelfThumb ${bgClass(scene.composition.background.preset)}`} style={backgroundStyle(scene.composition, 0)}>{scene.thumbnailDataUrl || scene.composition.thumbnailDataUrl ? <img src={scene.thumbnailDataUrl ?? scene.composition.thumbnailDataUrl} alt="" /> : <I.LayoutTemplate />}</div><b>{scene.name}</b><small>Drag-ready clip</small></button>)}</div>}
           <div className="masterPanelResize horizontal right" onPointerDown={(event) => resizeMasterPanel(event, "left")} />
@@ -1491,6 +1523,23 @@ function VideoEditorWorkspace({
       {masterExporting && <MasterExportDialog videoProject={videoProject} onClose={() => setMasterExporting(false)} />}
     </main>
   );
+}
+
+function assetMediaKind(asset: Pick<StoredAsset, "type" | "name">): "image" | "video" | "audio" | "model" | "other" {
+  if (asset.name.toLowerCase().endsWith(".glb") || asset.type.includes("gltf")) return "model";
+  if (asset.type.startsWith("image/")) return "image";
+  if (asset.type.startsWith("video/")) return "video";
+  if (asset.type.startsWith("audio/")) return "audio";
+  return "other";
+}
+
+function AssetLibraryItem({ asset, folders, referenced, onRefresh }: { asset: StoredAsset; folders: AssetFolder[]; referenced: boolean; onRefresh: () => Promise<void> }) {
+  const source = useAssetUrl(asset.id), kind = assetMediaKind(asset), Icon = kind === "image" ? I.Image : kind === "video" ? I.Film : kind === "audio" ? I.AudioLines : I.Box;
+  return <div className="assetLibraryItem" draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "copy"; event.dataTransfer.setData("application/x-renderlaunch-asset", JSON.stringify({ assetId: asset.id, kind, name: asset.name })); event.dataTransfer.setData("text/plain", asset.id); }}>
+    <div className={`assetPreview ${kind}`}>{kind === "image" && source.url ? <img src={source.url} alt="" /> : kind === "video" && source.url ? <video src={source.url} muted preload="metadata" /> : <Icon />}{referenced && <i title="Used in project"><I.Link /></i>}</div>
+    <div className="assetInfo"><b title={asset.name}>{asset.name}</b><small>{kind.toUpperCase()} · {asset.size >= 1_000_000 ? `${(asset.size / 1_000_000).toFixed(1)} MB` : `${Math.ceil(asset.size / 1000)} KB`}</small></div>
+    <div className="assetItemControls"><select aria-label={`Folder for ${asset.name}`} value={asset.folderId ?? "root"} onChange={async (event) => { await moveAsset(asset.id, event.target.value === "root" ? undefined : event.target.value); await onRefresh(); }}><option value="root">Unfiled</option>{folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><button title="Rename" onClick={async () => { const name = window.prompt("Rename asset", asset.name)?.trim(); if (name) { await renameAsset(asset.id, name); await onRefresh(); } }}><I.Pencil /></button><button title="Duplicate" onClick={async () => { await duplicateAsset(asset.id); await onRefresh(); }}><I.Copy /></button><button className="danger" title="Delete" onClick={async () => { const warning = referenced ? "This asset is used in the current project and deleting it will create a missing-file reference. Continue?" : `Delete “${asset.name}”?`; if (window.confirm(warning)) { await deleteAsset(asset.id); await onRefresh(); } }}><I.Trash2 /></button></div>
+  </div>;
 }
 
 function MasterOverlays({ overlays, frame }: { overlays: GlobalOverlay[]; frame: number }) {

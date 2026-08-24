@@ -7,14 +7,17 @@ import {
 } from "../project/schema";
 
 type StoredProject = VideoProject & { savedAt: string };
-type StoredAsset = {
+export type StoredAsset = {
   id: string;
   name: string;
   type: string;
   size: number;
   blob: Blob;
   createdAt: string;
+  updatedAt?: string;
+  folderId?: string;
 };
+export type AssetFolder = { id: string; name: string; createdAt: string; updatedAt: string };
 export type StoredSceneTemplate = {
   id: string;
   name: string;
@@ -28,6 +31,7 @@ const database = new Dexie("renderlaunch") as Dexie & {
   projects: EntityTable<StoredProject, "id">;
   assets: EntityTable<StoredAsset, "id">;
   sceneTemplates: EntityTable<StoredSceneTemplate, "id">;
+  assetFolders: EntityTable<AssetFolder, "id">;
 };
 
 database.version(1).stores({ projects: "id, updatedAt, savedAt" });
@@ -35,6 +39,8 @@ database
   .version(2)
   .stores({ projects: "id, updatedAt, savedAt", assets: "id, createdAt" });
 database.version(3).stores({ projects: "id, updatedAt, savedAt", assets: "id, createdAt", sceneTemplates: "id, updatedAt" });
+database.version(4).stores({ projects: "id, updatedAt, savedAt", assets: "id, createdAt, updatedAt, folderId, type", sceneTemplates: "id, updatedAt", assetFolders: "id, updatedAt" });
+database.version(5).stores({ projects: "id, updatedAt, savedAt", assets: "id, createdAt, updatedAt, folderId, type", sceneTemplates: "id, updatedAt", assetFolders: "id, name, updatedAt" });
 
 export async function saveProject(project: VideoProject) {
   const valid = videoProjectSchema.parse(project);
@@ -159,15 +165,18 @@ export async function saveSceneTemplate(composition: TemplateProject) {
 export async function listSceneTemplates() { return database.sceneTemplates.orderBy("updatedAt").reverse().toArray(); }
 export async function deleteSceneTemplate(templateId: string) { await database.sceneTemplates.delete(templateId); }
 
-export async function saveAsset(file: File) {
+export async function saveAsset(file: File, folderId?: string) {
   const id = crypto.randomUUID();
+  const now = new Date().toISOString();
   await database.assets.put({
     id,
     name: file.name,
     type: file.type || "model/gltf-binary",
     size: file.size,
     blob: file,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
+    folderId,
   });
   return id;
 }
@@ -177,4 +186,25 @@ export async function loadAssetBlob(id: string) {
 }
 export async function deleteAsset(id?: string) {
   if (id) await database.assets.delete(id);
+}
+
+export async function listAssets() { return database.assets.orderBy("createdAt").reverse().toArray(); }
+export async function listAssetFolders() { return database.assetFolders.orderBy("name").toArray(); }
+export async function createAssetFolder(name: string) {
+  const now = new Date().toISOString(), folder: AssetFolder = { id: crypto.randomUUID(), name, createdAt: now, updatedAt: now };
+  await database.assetFolders.put(folder); return folder;
+}
+export async function renameAssetFolder(id: string, name: string) { await database.assetFolders.update(id, { name, updatedAt: new Date().toISOString() }); }
+export async function deleteAssetFolder(id: string) {
+  await database.transaction("rw", database.assetFolders, database.assets, async () => {
+    await database.assets.where("folderId").equals(id).modify({ folderId: undefined, updatedAt: new Date().toISOString() });
+    await database.assetFolders.delete(id);
+  });
+}
+export async function renameAsset(id: string, name: string) { await database.assets.update(id, { name, updatedAt: new Date().toISOString() }); }
+export async function moveAsset(id: string, folderId?: string) { await database.assets.update(id, { folderId, updatedAt: new Date().toISOString() }); }
+export async function duplicateAsset(id: string) {
+  const source = await database.assets.get(id); if (!source) return null;
+  const now = new Date().toISOString(), copy: StoredAsset = { ...source, id: crypto.randomUUID(), name: `${source.name.replace(/(\.[^.]+)?$/, "")} Copy${source.name.match(/\.[^.]+$/)?.[0] ?? ""}`, createdAt: now, updatedAt: now };
+  await database.assets.put(copy); return copy;
 }
