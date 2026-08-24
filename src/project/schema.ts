@@ -401,13 +401,15 @@ export const timelineClipSchema = z.object({
 });
 export const timelineTrackSchema = z.object({
   id: z.string().min(1),
-  type: timelineClipTypeSchema,
+  type: z.enum(["video", "audio"]),
   name: z.string().min(1),
   order: z.number().int().nonnegative(),
   locked: z.boolean().default(false),
   muted: z.boolean().default(false),
   visible: z.boolean().default(true),
   opacity: z.number().min(0).max(1).default(1),
+  solo: z.boolean().default(false),
+  volume: z.number().min(0).max(2).default(1),
   clips: z.array(timelineClipSchema).default([]),
 });
 
@@ -426,7 +428,7 @@ export function buildUnifiedTimelineTracks(
   const visual = { x: 50, y: 50, scale: 1, opacity: 1, crop: "fit" as const };
   const trackState = (id: string) => {
     const existing = existingTracks.find((track) => track.id === id);
-    return { locked: existing?.locked ?? false, muted: existing?.muted ?? false, visible: existing?.visible ?? true, opacity: existing?.opacity ?? 1, order: existing?.order };
+    return { locked: existing?.locked ?? false, muted: existing?.muted ?? false, visible: existing?.visible ?? true, opacity: existing?.opacity ?? 1, solo: existing?.solo ?? false, volume: existing?.volume ?? 1, order: existing?.order };
   };
   const standalone = (type: z.infer<typeof timelineClipTypeSchema>) => existingTracks.filter((track) => track.type === type).flatMap((track) => track.clips).filter((clip) => clip.referenceType === "asset");
   const ordered = [...scenes].sort((a, b) => a.order - b.order), starts: number[] = [];
@@ -436,19 +438,19 @@ export function buildUnifiedTimelineTracks(
     const next = ordered[index + 1], transition = !next || scene.transitionToNext.type === "cut" ? 0 : Math.min(scene.transitionToNext.durationInFrames, scene.durationInFrames - 1, next.durationInFrames - 1);
     cursor += scene.durationInFrames - Math.max(0, transition);
   });
+  const legacyVisualIds = new Set(["master-video", "master-images", "master-text", "master-scenes"]),
+    visualExisting = existingTracks.filter((track) => track.type !== "audio" && legacyVisualIds.has(track.id));
   const tracks: Array<z.infer<typeof timelineTrackSchema>> = [{
-    id: "master-scenes", type: "scene", name: "Scenes", ...trackState("master-scenes"), order: trackState("master-scenes").order ?? 0,
-    clips: ordered.map((scene, index) => ({ id: `scene-clip:${scene.id}`, type: "scene", name: scene.name, startFrame: starts[index], durationInFrames: scene.durationInFrames, sourceStartFrame: scene.sourceStartFrame, referenceType: "scene", referenceId: scene.id, ...visual })),
-  }, {
-    id: "master-images", type: "image", name: "Images & logos", ...trackState("master-images"), order: trackState("master-images").order ?? 1,
-    clips: [...overlays.filter((overlay) => overlay.type === "logo" || overlay.type === "watermark").map((overlay) => ({ id: `overlay-clip:${overlay.id}`, type: "image" as const, name: overlay.name, startFrame: overlay.startFrame, durationInFrames: overlay.durationInFrames, sourceStartFrame: 0, referenceType: "overlay" as const, referenceId: overlay.id, assetId: overlay.assetId, ...visual })), ...standalone("image")],
-  }, {
-    id: "master-text", type: "text", name: "Titles & captions", ...trackState("master-text"), order: trackState("master-text").order ?? 2,
-    clips: overlays.filter((overlay) => overlay.type !== "logo" && overlay.type !== "watermark").map((overlay) => ({ id: `overlay-clip:${overlay.id}`, type: "text", name: overlay.name, startFrame: overlay.startFrame, durationInFrames: overlay.durationInFrames, sourceStartFrame: 0, referenceType: "overlay", referenceId: overlay.id, ...visual })),
-  }, {
-    id: "master-video", type: "video", name: "Video", ...trackState("master-video"), order: trackState("master-video").order ?? 3, clips: standalone("video"),
+    id: "master-video", type: "video", name: "Video 1", ...trackState("master-video"), order: trackState("master-video").order ?? 0,
+    clips: [
+      ...ordered.map((scene, index) => ({ id: `scene-clip:${scene.id}`, type: "scene" as const, name: scene.name, startFrame: starts[index], durationInFrames: scene.durationInFrames, sourceStartFrame: scene.sourceStartFrame, referenceType: "scene" as const, referenceId: scene.id, ...visual })),
+      ...overlays.map((overlay) => ({ id: `overlay-clip:${overlay.id}`, type: overlay.type === "logo" || overlay.type === "watermark" ? "image" as const : "text" as const, name: overlay.name, startFrame: overlay.startFrame, durationInFrames: overlay.durationInFrames, sourceStartFrame: 0, referenceType: "overlay" as const, referenceId: overlay.id, assetId: overlay.assetId, ...visual })),
+      ...visualExisting.flatMap((track) => track.clips).filter((clip) => clip.referenceType === "asset"),
+    ],
   }];
-  audioTracks.forEach((track, index) => { const id = `master-audio:${track.id}`, state = trackState(id); tracks.push({ id, type: "audio", name: track.name, ...state, order: state.order ?? 4 + index, muted: track.muted || state.muted, clips: track.clips.map((clip) => ({ id: `audio-clip:${clip.id}`, type: "audio", name: clip.fileName, startFrame: clip.startFrame, durationInFrames: clip.durationInFrames, sourceStartFrame: clip.sourceStartFrame, referenceType: "audio-clip", referenceId: clip.id, assetId: clip.assetId, ...visual })) }); });
+  existingTracks.filter((track) => track.type === "video" && !legacyVisualIds.has(track.id)).forEach((track) => tracks.push({ ...track, order: tracks.length }));
+  audioTracks.forEach((track) => { const id = `master-audio:${track.id}`, state = trackState(id); tracks.push({ id, type: "audio", name: track.name, ...state, volume: track.volume, order: state.order ?? tracks.length, muted: track.muted || state.muted, clips: track.clips.map((clip) => ({ id: `audio-clip:${clip.id}`, type: "audio", name: clip.fileName, startFrame: clip.startFrame, durationInFrames: clip.durationInFrames, sourceStartFrame: clip.sourceStartFrame, referenceType: "audio-clip", referenceId: clip.id, assetId: clip.assetId, ...visual })) }); });
+  existingTracks.filter((track) => track.type === "audio" && !tracks.some((item) => item.id === track.id)).forEach((track) => tracks.push({ ...track, order: tracks.length }));
   return tracks;
 }
 
@@ -460,7 +462,13 @@ export const videoProjectSchema = z.object({
     width: z.literal(1280),
     height: z.literal(720),
     fps: z.literal(30),
+    durationInFrames: z.number().int().positive().default(450),
   }),
+  workArea: z.object({
+    enabled: z.boolean().default(false),
+    startFrame: z.number().int().nonnegative().default(0),
+    endFrame: z.number().int().positive().default(450),
+  }).default({ enabled: false, startFrame: 0, endFrame: 450 }),
   scenes: z.array(videoSceneSchema).default([]),
   audioTracks: z.array(audioTrackSchema).default([]),
   globalOverlays: z.array(globalOverlaySchema).default([]),
@@ -492,12 +500,16 @@ export function migrateVideoProjectData(value: unknown): unknown {
       : candidate.scenes;
     const normalizedAudio = Array.isArray(candidate.audioTracks) && candidate.audioTracks.length ? candidate.audioTracks : defaultAudioTracks(),
       normalizedOverlays = candidate.globalOverlays ?? [];
+    const storedTracks = Array.isArray(candidate.timelineTracks) ? candidate.timelineTracks : [],
+      needsTrackMigration = storedTracks.some((track) => !track || typeof track !== "object" || !["video", "audio"].includes(String((track as Record<string, unknown>).type)));
     return {
       ...candidate,
       scenes: normalizedScenes,
       audioTracks: normalizedAudio,
       globalOverlays: normalizedOverlays,
-      timelineTracks: Array.isArray(candidate.timelineTracks) && candidate.timelineTracks.length ? candidate.timelineTracks : buildUnifiedTimelineTracks((normalizedScenes ?? []) as Array<z.infer<typeof videoSceneSchema>>, normalizedAudio as Array<z.infer<typeof audioTrackSchema>>, normalizedOverlays as Array<z.infer<typeof globalOverlaySchema>>),
+      canvas: { ...(candidate.canvas as object), durationInFrames: Number((candidate.canvas as Record<string, unknown> | undefined)?.durationInFrames ?? 450) },
+      workArea: candidate.workArea ?? { enabled: false, startFrame: 0, endFrame: Number((candidate.canvas as Record<string, unknown> | undefined)?.durationInFrames ?? 450) },
+      timelineTracks: storedTracks.length && !needsTrackMigration ? storedTracks : buildUnifiedTimelineTracks((normalizedScenes ?? []) as Array<z.infer<typeof videoSceneSchema>>, normalizedAudio as Array<z.infer<typeof audioTrackSchema>>, normalizedOverlays as Array<z.infer<typeof globalOverlaySchema>>, storedTracks as Array<z.infer<typeof timelineTrackSchema>>),
     };
   }
   const migratedComposition = migrateProjectData(value) as Record<
@@ -515,7 +527,8 @@ export function migrateVideoProjectData(value: unknown): unknown {
     schemaVersion: 3,
     id: projectId,
     name: projectName,
-    canvas: { width: 1280, height: 720, fps: 30 },
+    canvas: { width: 1280, height: 720, fps: 30, durationInFrames: Number((migratedComposition.canvas as Record<string, unknown>)?.durationInFrames ?? 450) },
+    workArea: { enabled: false, startFrame: 0, endFrame: Number((migratedComposition.canvas as Record<string, unknown>)?.durationInFrames ?? 450) },
     scenes: [
       {
         id: sceneId,

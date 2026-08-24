@@ -181,20 +181,18 @@ export function createDefaultProject(): TemplateProject {
 
 export function createDefaultVideoProject(): VideoProject {
   const composition = createDefaultProject(),
-    sceneId = crypto.randomUUID(),
-    scenes: VideoScene[] = [{ id: sceneId, name: "Scene 1", order: 0, sourceStartFrame: 0, durationInFrames: composition.canvas.durationInFrames, transitionToNext: { type: "cut", durationInFrames: 15 }, composition, createdAt: composition.createdAt, updatedAt: composition.updatedAt }],
+    scenes: VideoScene[] = [],
     audioTracks: AudioTrack[] = [
-      { id: "music", name: "Music", type: "music", muted: false, volume: 1, clips: [] },
-      { id: "voiceover", name: "Voice-over", type: "voiceover", muted: false, volume: 1, clips: [] },
-      { id: "sfx", name: "Sound Effects", type: "sfx", muted: false, volume: 1, clips: [] },
+      { id: crypto.randomUUID(), name: "Audio 1", type: "music", muted: false, volume: 1, clips: [] },
     ];
   return {
     schemaVersion: 3,
     id: composition.id,
     name: composition.name,
-    canvas: { width: 1280, height: 720, fps: 30 },
+    canvas: { width: 1280, height: 720, fps: 30, durationInFrames: 900 },
+    workArea: { enabled: false, startFrame: 0, endFrame: 900 },
     scenes,
-    activeSceneId: sceneId,
+    activeSceneId: "",
     audioTracks,
     globalOverlays: [],
     timelineTracks: buildUnifiedTimelineTracks(scenes, audioTracks, []),

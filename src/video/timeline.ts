@@ -34,7 +34,7 @@ export function sceneStarts(video: VideoProject) {
     cursor +=
       clipDuration(scene) - transitionDuration(scene, scenes[index + 1]);
   });
-  return { scenes, starts, totalFrames: Math.max(1, cursor) };
+  return { scenes, starts, totalFrames: Math.max(1, cursor, video.canvas.durationInFrames) };
 }
 
 export const sceneMasterStart = (video: VideoProject, sceneId: string) => {
@@ -59,9 +59,9 @@ export function resolveMasterFrame(
     }
   }
   const scene = scenes[sceneIndex],
-    localFrame = Math.round(
-      clamp(masterFrame - starts[sceneIndex], 0, clipDuration(scene) - 1),
-    );
+    localFrame = scene ? Math.round(
+      clamp(masterFrame - (starts[sceneIndex] ?? 0), 0, clipDuration(scene) - 1),
+    ) : masterFrame;
   let transition:
     | {
         from: VideoScene;

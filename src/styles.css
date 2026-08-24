@@ -475,12 +475,14 @@ button {
 .masterMediaClip { position: absolute; width: 50%; height: 50%; max-width: none; border-radius: 4px; }
 .masterCompositor,.masterCompositorTrack { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .masterCompositor { z-index: 1; }
-.emptyMasterWorkspace { min-height: 100vh; display: grid; grid-template-rows: 56px minmax(320px,1fr) 260px; background: #101217; color: #f4f6f8; }
-.emptyMasterBody { display: grid; place-items: center; padding: 36px; background: radial-gradient(circle at 50% 42%, #17283e 0, #11151c 42%, #101217 72%); }
+.emptyMasterWorkspace { min-height: 100vh; display: grid; grid-template-rows: 56px minmax(320px,1fr) 260px 32px; background: #101217; color: #f4f6f8; }
+.emptyMasterBody { display: grid; place-items: center; padding: 36px; background: #101217; }
+.emptyComposition { width: min(960px,80vw); aspect-ratio: 16/9; display:grid; place-items:center; border:1px solid #303743; background:#090b0f; box-shadow:0 24px 70px #0008; }
+.emptyComposition > div { display:grid; justify-items:center; gap:12px; color:#7f8996; }.emptyComposition svg{width:30px}.emptyComposition p{margin:0}.emptyComposition button{height:34px;padding:0 12px;display:flex;align-items:center;gap:7px;border:1px solid #365f89;border-radius:6px;background:#173452;color:#dcecff}.emptyComposition button svg{width:14px}
 .emptyMasterHero { width: min(620px,90vw); display: grid; justify-items: center; gap: 14px; text-align: center; }
 .emptyMasterHero > span { width: 52px; height: 52px; display: grid; place-items: center; border: 1px solid #2c73b7; border-radius: 15px; background: #15395f; color: #69b4ff; box-shadow: 0 14px 45px #0008; }.emptyMasterHero > span svg { width: 24px; }
 .emptyMasterHero small { color: #5daeff; font-size: 10px; font-weight: 700; letter-spacing: .15em; }.emptyMasterHero h1 { margin: 0; font-size: clamp(28px,4vw,48px); letter-spacing: -.04em; }.emptyMasterHero p { max-width: 540px; margin: 0; color: #9ca5b2; line-height: 1.6; }.emptyMasterHero > div { margin-top: 8px; display: flex; gap: 9px; }.emptyMasterHero button { height: 38px; padding: 0 15px; display: flex; align-items: center; gap: 7px; border: 1px solid #343944; border-radius: 8px; background: #1b1f27; }.emptyMasterHero button.primary { border-color: #168cff; background: #168cff; color: white; }.emptyMasterHero button svg { width: 15px; }
-.emptyMasterTimeline { padding: 12px 16px 18px; display: grid; align-content: start; gap: 5px; border-top: 1px solid #30343c; background: #15181e; }.emptyMasterTimeline > div:first-child { height: 38px; display: flex; flex-direction: column; }.emptyMasterTimeline small { color: #737d89; font-size: 9px; }.emptyTrack { min-height: 44px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; border: 1px solid #30343c; border-radius: 7px; background: #191d24; }.emptyTrack span,.emptyTrack button { display: flex; align-items: center; gap: 8px; font-size: 10px; }.emptyTrack svg { width: 14px; color: #4aa3ff; }.emptyTrack button { height: 29px; padding: 0 10px; border: 1px solid #365f89; border-radius: 6px; background: #173452; }.emptyTrack.muted { opacity: .55; }
+.emptyMasterTimeline { padding: 12px 16px 18px; display: grid; grid-template-rows:auto 1fr; min-height:0; gap: 7px; border-top: 1px solid #30343c; background: #15181e; }.emptyMasterTimeline small { color: #737d89; font-size: 9px; }.emptyTimelineHead,.emptyTimelineHead>span{display:flex;align-items:center;justify-content:space-between;gap:7px}.emptyTimelineHead>div{display:flex;flex-direction:column}.emptyTimelineHead button{height:30px;padding:0 9px;display:flex;align-items:center;gap:5px;border:1px solid #343b46;border-radius:6px;background:#20252d;color:#dce2ea}.emptyTimelineHead svg{width:13px}.emptyTrackScroller{overflow-y:auto;display:grid;align-content:start;gap:4px}.emptyTrack { min-height: 48px; padding: 0 10px; display: grid; grid-template-columns:240px 1fr auto; align-items: center; gap:12px; border: 1px solid #30343c; border-radius: 5px; background: #191d24; }.emptyTrack span{display:flex;align-items:center;gap:8px}.emptyTrack span>svg{width:15px;color:#4aa3ff}.emptyTrack span input{width:170px;border:0;background:transparent;color:#eef2f7;font-weight:600}.emptyTrack>i{height:30px;display:grid;place-items:center;border:1px dashed #343b47;border-radius:4px;color:#687483;font-size:10px;font-style:normal}.emptyTrackActions{display:flex;align-items:center;gap:3px}.emptyTrackActions button{width:27px;height:27px;display:grid;place-items:center;border-radius:5px;color:#9ba5b1}.emptyTrackActions button:hover,.emptyTrackActions button.active{background:#26364a;color:#63adfa}.emptyTrackActions svg{width:13px}.emptyTrackActions input[type=range]{width:65px}.emptyTrackPlaceholder{height:70px;display:grid;place-items:center;border:1px dashed #343b47;color:#747f8c}
 .inspectorWaveform { height: 42px; padding: 5px; display: flex; align-items: center; gap: 1px; overflow: hidden; border: 1px solid #343944; border-radius: 5px; background: #171a20; }
 .inspectorWaveform i { min-width: 1px; flex: 1; max-height: 100%; border-radius: 1px; background: #45a3ff; }
 
@@ -1709,6 +1711,68 @@ footer {
     bottom: 9px;
   }
 }
+.masterTimelineViewport { overflow-x: auto; position: relative; }
+.masterWorkArea { position: absolute; top: 0; height: 5px; z-index: 12; pointer-events: none; background: #78818d88; border-radius: 2px; }
+.masterWorkArea.enabled { background: #f0b429; box-shadow: 0 0 0 1px #f8cc64; }
+.masterWorkArea i { position: absolute; top: -3px; width: 7px; height: 11px; border-radius: 2px; background: inherit; pointer-events: auto; cursor: ew-resize; }
+.masterWorkArea i:first-child { left: 0; transform: translateX(-50%); }
+.masterWorkArea i:last-child { right: 0; transform: translateX(50%); }
+.blankCompositionTools { position: fixed; top: 64px; left: 50%; z-index: 8; transform: translateX(-50%); display: flex; gap: 5px; padding: 6px; border: 1px solid #303743; border-radius: 8px; background: #171b22ee; }
+.blankCompositionTools button { height: 30px; padding: 0 9px; display: flex; align-items: center; gap: 5px; border-radius: 5px; color: #b8c0ca; }
+.blankCompositionTools button:hover, .blankCompositionTools button.active { background: #26364a; color: #69b4ff; }
+.blankCompositionTools svg { width: 13px; }
+.simpleMasterLibrary { position: fixed; z-index: 7; top: 56px; bottom: 260px; left: 0; width: 360px; display: flex; flex-direction: column; gap: 9px; padding: 10px; overflow: hidden; border-right: 1px solid #30343c; background: #15181e; color: #e9edf2; }
+.simpleLibraryTabs { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid #30343c; }
+.simpleLibraryTabs button { height: 38px; color: #a9b1bc; font-size: 11px; }
+.simpleLibraryTabs button.active { color: #a883ff; border-bottom: 2px solid #8b5cf6; }
+.simpleLibrarySearch { height: 32px; display: flex; align-items: center; gap: 7px; padding: 0 9px; border: 1px solid #292f38; border-radius: 5px; background: #101318; color: #737d89; font-size: 11px; }
+.simpleLibrarySearch svg { width: 13px; }
+.simpleLibraryGrid { min-height: 0; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; align-content: start; gap: 10px; }
+.simpleLibraryGrid { flex: 1; }
+.simpleMediaUpload { height: 34px; flex: none; display:flex;align-items:center;justify-content:center;gap:7px;border:1px solid #3b4654;border-radius:6px;background:#1d2631;color:#dce7f4;font-size:11px;cursor:pointer}.simpleMediaUpload:hover{border-color:#4aa3ff;background:#20354b}.simpleMediaUpload svg{width:14px}.simpleMediaUpload input{display:none}
+.simpleLibraryError{flex:none;display:flex;align-items:flex-start;gap:6px;padding:7px;border:1px solid #783c42;border-radius:5px;background:#3b2025;color:#ffaaa8;font-size:10px;line-height:1.35}.simpleLibraryError svg{width:13px;flex:none}
+.simpleMediaThumb video{width:100%;height:100%;object-fit:cover}.simpleMediaThumb.audio{background:linear-gradient(135deg,#17382f,#10221d);color:#55d69a}.simpleMediaThumb.video{background:#090d12}.simpleMediaThumb.image{background:#111820}
+.simpleLibraryGrid > button { position: relative; min-width: 0; padding: 0 0 7px; overflow: hidden; display: grid; text-align: left; border: 1px solid #303641; border-radius: 7px; background: #101318; color: #e4e9ef; }
+.simpleLibraryGrid > button:hover { border-color: #8b5cf6; }
+.simpleLibraryGrid > button:disabled { opacity: .4; }
+.simpleLibraryGrid span { height: 86px; display: grid; place-items: center; overflow: hidden; }
+.simpleLibraryGrid img { width: 100%; height: 100%; object-fit: cover; }
+.simpleLibraryGrid svg { width: 22px; }
+.simpleLibraryGrid b, .simpleLibraryGrid small { padding: 0 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.simpleLibraryGrid b { margin-top: 5px; font-size: 10px; }.simpleLibraryGrid small { color: #7f8996; font-size: 9px; }
+.simpleLibraryEmpty { display: grid; place-items: center; align-content: center; gap: 9px; color: #77818d; text-align: center; }
+.simpleOpenLibrary { height: 34px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #343b46; border-radius: 6px; }.simpleOpenLibrary svg{width:14px}
+.simpleMasterInspector { position: fixed; z-index: 7; top: 56px; right: 0; bottom: 260px; width: 310px; border-left: 1px solid #30343c; background: #15181e; color: #e9edf2; }
+.simpleMasterInspector > div { height: 44px; padding: 0 13px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #30343c; }.simpleMasterInspector svg{width:15px}.simpleMasterInspector section{height:calc(100% - 44px);display:grid;place-items:center;align-content:center;gap:8px;color:#77818d}
+.simpleMasterInspector .simpleClipInspector{height:auto;display:grid;place-items:stretch;align-content:start;gap:10px;padding:14px;color:#dce2e9}.simpleClipInspector small{color:#7791ac;font-size:9px;letter-spacing:.1em}.simpleClipInspector h3{margin:0 0 5px;font-size:14px;overflow:hidden;text-overflow:ellipsis}.simpleClipInspector label{display:grid;gap:5px;color:#8d98a5;font-size:10px}.simpleClipInspector input{height:32px;padding:0 8px;border:1px solid #343d49;border-radius:5px;background:#10151b;color:#e8edf3}.simpleClipInspector>div{display:grid;grid-template-columns:1fr 1fr;gap:6px}.simpleClipInspector button{min-height:32px;padding:0 8px;display:flex;align-items:center;justify-content:center;gap:5px;border:1px solid #343d49;border-radius:5px}.simpleClipInspector button:disabled{opacity:.35}.simpleClipInspector button.danger{color:#ff8581;border-color:#663b3e}
+.emptyMasterBody { padding-left: 380px; padding-right: 330px; }
+.emptyComposition { width: min(960px, calc(100vw - 750px)); position: relative; overflow: hidden; }
+.emptyComposition > .masterCompositor { position: absolute; inset: 0; }
+.simpleTrackLane { position: relative; height: 34px; overflow: hidden; border: 1px dashed #343b47; border-radius: 4px; }
+.simpleTrackLane > i { position: absolute; inset: 0; display: grid; place-items: center; color: #687483; font-size: 10px; font-style: normal; }
+.simpleTimelineClip { position: absolute; top: 2px; bottom: 2px; min-width: 18px; overflow: hidden; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 7px; border: 1px solid #398ee8; border-radius: 4px; background: #185b94; color: white; text-align: left; }
+.simpleTimelineClip.audio { border-color: #37a26f; background: #17613f; }.simpleTimelineClip small{font-size:8px;opacity:.8}.simpleTimelineClip b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px}
+.simplePlayhead { position:absolute; z-index:4; top:0; bottom:0; width:1px; background:#45a7ff; pointer-events:none; }
+.emptyTrack { grid-template-columns: 240px minmax(260px, 1fr) auto; }
+.emptyMasterTimeline { padding: 0; gap: 0; grid-template-rows: 44px 1fr; background: #11151b; }
+.emptyTimelineHead { padding: 0 8px; border-bottom: 1px solid #29303a; background: #12161c; }
+.timelinePrimaryTools { display: flex !important; flex-direction: row !important; align-items: center; gap: 6px; }
+.emptyTimelineHead > span > svg { width: 15px; color: #89939f; }.emptyTimelineHead > span > input{width:120px}
+.emptyTrackScroller { display: block; overflow: auto; position: relative; scrollbar-color: #66717f #090c10; }
+.simpleTimelineRuler { position: sticky; top: 0; min-width: 100%; height: 34px; z-index: 9; border-bottom: 1px solid #29303a; background: #10141a; }
+.simpleTimelineRuler > span { position: sticky; left: 0; display: block; width: 330px; height: 100%; z-index: 2; border-right: 1px solid #2b333e; background: #12161c; }
+.simpleTimelineRuler i { position: absolute; top: 8px; transform: translateX(-50%); color: #a7afb9; font-size: 9px; font-style: normal; white-space: nowrap; }
+.simpleTimelineRuler a { position: absolute; bottom: 2px; height: 4px; min-width: 3px; border-radius: 3px; background: #8b5cf6; box-shadow: 0 0 0 1px #b496ff55; }
+.simpleTimelineRuler b { position: absolute; top: 0; height: 34px; width: 1px; z-index: 8; background: #36a9ef; pointer-events: none; }.simpleTimelineRuler b:before{content:"";position:absolute;top:0;left:-5px;border-left:6px solid transparent;border-right:6px solid transparent;border-top:9px solid #36a9ef}
+.emptyTrack { box-sizing: border-box; min-width: 100%; min-height: 56px; padding: 0; display: grid; grid-template-columns: 120px 210px minmax(500px,1fr); gap: 0; border: 0; border-bottom: 1px solid #28303a; border-radius: 0; background: #12171d; }
+.emptyTrack:hover { background: #151c24; }.emptyTrack > span { position: sticky; left: 0; z-index: 6; grid-column: 1; height: 100%; padding: 0 6px; border-right: 1px solid #29313b; background: inherit; }.emptyTrack > span > svg{width:12px}.emptyTrack > span .trackGrip{width:10px;color:#737e8b;cursor:grab}.emptyTrack > span input{width:62px;font-size:10px}
+.emptyTrackActions { position: sticky; left: 120px; z-index: 6; grid-column: 2; grid-row: 1; height: 100%; padding: 0 7px; border-right: 1px solid #29313b; background: inherit; }.emptyTrackActions button{width:25px;height:25px}.emptyTrackActions input[type=range]{width:70px}
+.simpleTrackLane { grid-column: 3; grid-row: 1; height: 55px; overflow: hidden; border: 0; border-radius: 0; background: repeating-linear-gradient(90deg, transparent 0, transparent 79px, #252c351f 80px); }
+.simpleTrackLane.compatibleDrop{outline:2px solid #3da4ff;outline-offset:-2px;background-color:#14304a}.simpleTrackLane.invalidDrop{outline:2px solid #ef6262;outline-offset:-2px;background:#3a1d23}
+.simpleTimelineClip { top: 7px; bottom: 7px; min-width: 50px; padding: 0 8px; border-radius: 4px; box-shadow: 0 2px 8px #0007; }.simpleTimelineClip.scene,.simpleTimelineClip.video,.simpleTimelineClip.image{background:#174f7e;border-color:#3fa7ef}.simpleTimelineClip b{font-size:9px}.simpleTimelineClip small{font-size:8px}
+.simpleTimelineClip.selected{outline:2px solid #78c4ff;outline-offset:1px;filter:brightness(1.12)}
+.simpleTimelineStatus { height: 32px; padding: 0 10px; display: flex; align-items: center; gap: 18px; border-top: 1px solid #29303a; background: #0f1318; color: #9da6b1; font-size: 10px; }.simpleTimelineStatus span{display:flex;align-items:center;gap:6px}.simpleTimelineStatus span:first-child{color:#aeb7c2}.simpleTimelineStatus span:first-child svg{width:13px;color:#48d597}.simpleTimelineStatus i{flex:1}.simpleTimelineStatus button{width:28px;height:25px;display:grid;place-items:center;border:1px solid #2a313b;border-radius:4px}.simpleTimelineStatus button svg{width:13px}
+.simpleMasterLibrary,.simpleMasterInspector { bottom: 292px; }
 .threeCanvas {
   position: absolute;
   inset: 0;

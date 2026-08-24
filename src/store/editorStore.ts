@@ -20,6 +20,7 @@ import { clamp } from "../animation/frame";
 import {
   orderedScenes,
   resolveMasterFrame,
+  sceneStarts,
   sceneMasterStart,
 } from "../video/timeline";
 
@@ -87,11 +88,19 @@ type EditorState = {
   createVideoProject: () => void;
   addSceneFromTemplate: (composition: TemplateProject) => void;
   insertSceneFromTemplate: (composition: TemplateProject, targetIndex: number) => void;
-  addTimelineAssetClip: (type: Extract<TimelineClipType, "image" | "video">, asset: { id: string; name: string }, startFrame: number, durationInFrames: number) => void;
+  addTimelineAssetClip: (type: Extract<TimelineClipType, "image" | "video">, asset: { id: string; name: string }, startFrame: number, durationInFrames: number, trackId?: string) => void;
   updateTimelineAssetClip: (clipId: string, patch: { startFrame?: number; durationInFrames?: number; sourceStartFrame?: number; x?: number; y?: number; scale?: number; opacity?: number; crop?: "fit" | "fill" | "stretch" }) => void;
   deleteTimelineAssetClip: (clipId: string, ripple?: boolean) => void;
   splitTimelineAssetClip: (clipId: string, frame: number) => void;
   duplicateTimelineAssetClip: (clipId: string) => void;
+  addTimelineTrack: (type: "video" | "audio") => void;
+  updateTimelineTrack: (trackId: string, patch: { name?: string; locked?: boolean; visible?: boolean; muted?: boolean; solo?: boolean; volume?: number }) => void;
+  reorderTimelineTrack: (trackId: string, direction: -1 | 1) => void;
+  duplicateTimelineTrack: (trackId: string) => void;
+  deleteTimelineTrack: (trackId: string) => void;
+  setCompositionDuration: (durationInFrames: number) => void;
+  setWorkArea: (patch: { enabled?: boolean; startFrame?: number; endFrame?: number }) => void;
+  fitCompositionToContent: () => void;
   undo: () => void;
   redo: () => void;
   persist: () => Promise<void>;
@@ -100,7 +109,7 @@ type EditorState = {
 const initialVideoProject = createDefaultVideoProject();
 const activeComposition = (video: VideoProject) =>
   video.scenes.find((scene) => scene.id === video.activeSceneId)?.composition ??
-  video.scenes[0].composition;
+  video.scenes[0]?.composition ?? createDefaultProject();
 const normalizeSceneOrder = (scenes: VideoScene[]) =>
   scenes.forEach((scene, order) => {
     scene.order = order;
@@ -174,7 +183,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     })),
   setMasterFrame: (frame) =>
     set((state) => {
-      if (!state.videoProject.scenes.length) return { masterFrame: 0, currentFrame: 0, playing: false };
+      if (!state.videoProject.scenes.length) return { masterFrame: Math.round(clamp(frame, 0, state.videoProject.canvas.durationInFrames - 1)), currentFrame: 0 };
       const resolved = resolveMasterFrame(state.videoProject, frame),
         videoProject =
           resolved.scene.id === state.videoProject.activeSceneId
@@ -195,21 +204,27 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }),
   advanceFrame: () =>
     set((state) => {
-      if (!state.videoProject.scenes.length) return { masterFrame: 0, currentFrame: 0, playing: false };
+      if (!state.videoProject.scenes.length) {
+        const rangeEnd = state.videoProject.workArea.enabled ? state.videoProject.workArea.endFrame : state.videoProject.canvas.durationInFrames,
+          next = state.masterFrame + 1;
+        return next >= rangeEnd ? { masterFrame: state.videoProject.workArea.enabled ? state.videoProject.workArea.startFrame : 0, currentFrame: 0, playing: false } : { masterFrame: next, currentFrame: 0 };
+      }
       if (state.playbackScope === "master") {
         const current = resolveMasterFrame(
             state.videoProject,
             state.masterFrame,
           ),
           nextFrame = state.masterFrame + 1;
-        if (nextFrame >= current.totalFrames) {
-          const first = resolveMasterFrame(state.videoProject, 0),
+        const rangeStart = state.videoProject.workArea.enabled ? state.videoProject.workArea.startFrame : 0,
+          rangeEnd = state.videoProject.workArea.enabled ? state.videoProject.workArea.endFrame : current.totalFrames;
+        if (nextFrame >= rangeEnd) {
+          const first = resolveMasterFrame(state.videoProject, rangeStart),
             videoProject = produce(state.videoProject, (draft) => {
               draft.activeSceneId = first.scene.id;
             });
           return {
-            masterFrame: 0,
-            currentFrame: 0,
+            masterFrame: rangeStart,
+            currentFrame: first.localFrame,
             playing: false,
             videoProject,
             project: first.scene.composition,
@@ -240,21 +255,25 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setPlaying: (playing) =>
     set((state) => {
       if (!playing) return { playing: false };
-      if (!state.videoProject.scenes.length) return { playing: false, masterFrame: 0, currentFrame: 0 };
+      if (!state.videoProject.scenes.length) {
+        const start = state.videoProject.workArea.enabled ? state.videoProject.workArea.startFrame : 0, end = state.videoProject.workArea.enabled ? state.videoProject.workArea.endFrame : state.videoProject.canvas.durationInFrames;
+        return { playing: true, masterFrame: state.masterFrame < start || state.masterFrame >= end - 1 ? start : state.masterFrame, currentFrame: 0 };
+      }
       if (state.playbackScope === "master") {
         const current = resolveMasterFrame(
           state.videoProject,
           state.masterFrame,
         );
-        if (state.masterFrame >= current.totalFrames - 1) {
-          const first = resolveMasterFrame(state.videoProject, 0),
+        const start = state.videoProject.workArea.enabled ? state.videoProject.workArea.startFrame : 0, end = state.videoProject.workArea.enabled ? state.videoProject.workArea.endFrame : current.totalFrames;
+        if (state.masterFrame < start || state.masterFrame >= end - 1) {
+          const first = resolveMasterFrame(state.videoProject, start),
             videoProject = produce(state.videoProject, (draft) => {
               draft.activeSceneId = first.scene.id;
             });
           return {
             playing: true,
-            masterFrame: 0,
-            currentFrame: 0,
+            masterFrame: start,
+            currentFrame: first.localFrame,
             videoProject,
             project: first.scene.composition,
             selectedLayerId: "phone",
@@ -584,6 +603,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         videoProject = produce(state.videoProject, (draft) => {
           if (!draft.audioTracks.length) draft.audioTracks = defaultAudioTracks();
           draft.audioTracks.find((track) => track.id === trackId)?.clips.push(clip);
+          draft.canvas.durationInFrames = Math.max(draft.canvas.durationInFrames, clip.startFrame + clip.durationInFrames);
           draft.updatedAt = now;
         });
       return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
@@ -592,7 +612,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       const videoProject = produce(state.videoProject, (draft) => {
         const clip = draft.audioTracks.find((track) => track.id === trackId)?.clips.find((item) => item.id === clipId);
-        if (clip) Object.assign(clip, patch);
+        if (clip) { Object.assign(clip, patch); clip.startFrame = Math.max(0, Math.round(clip.startFrame)); clip.durationInFrames = Math.max(1, Math.round(clip.durationInFrames)); draft.canvas.durationInFrames = Math.max(draft.canvas.durationInFrames, clip.startFrame + clip.durationInFrames); }
         draft.updatedAt = new Date().toISOString();
       });
       return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
@@ -628,7 +648,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       const labels: Record<GlobalOverlayType, string> = { title: "Opening Title", caption: "Caption", cta: "Call to Action", logo: "Logo", watermark: "Watermark" },
         text: Record<GlobalOverlayType, string> = { title: "Your launch starts here", caption: "A clear supporting message", cta: "Get started today", logo: "", watermark: "" },
-        totalFrames = orderedScenes(state.videoProject).reduce((sum, scene) => sum + scene.durationInFrames, 0),
+        totalFrames = state.videoProject.canvas.durationInFrames,
         overlay: GlobalOverlay = {
           id: crypto.randomUUID(), type, name: labels[type], startFrame: Math.round(clamp(startFrame, 0, Math.max(0, totalFrames - 1))),
           durationInFrames: Math.max(1, Math.min(type === "caption" ? 90 : 150, totalFrames - Math.round(clamp(startFrame, 0, Math.max(0, totalFrames - 1))))),
@@ -645,7 +665,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       const videoProject = produce(state.videoProject, (draft) => {
         const overlay = draft.globalOverlays.find((item) => item.id === overlayId);
-        if (overlay) Object.assign(overlay, patch);
+        if (overlay) { Object.assign(overlay, patch); overlay.startFrame = Math.max(0, Math.round(overlay.startFrame)); overlay.durationInFrames = Math.max(1, Math.round(overlay.durationInFrames)); draft.canvas.durationInFrames = Math.max(draft.canvas.durationInFrames, overlay.startFrame + overlay.durationInFrames); }
         draft.updatedAt = new Date().toISOString();
       });
       return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
@@ -670,7 +690,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       cloned.id = crypto.randomUUID(); cloned.createdAt = now; cloned.updatedAt = now;
       const videoProject = produce(state.videoProject, (draft) => {
         draft.scenes.push({ id: sceneId, name: cloned.name, order: draft.scenes.length, sourceStartFrame: 0, durationInFrames: cloned.canvas.durationInFrames, transitionToNext: { type: "cut", durationInFrames: 15 }, thumbnailDataUrl: cloned.thumbnailDataUrl, composition: cloned, createdAt: now, updatedAt: now });
-        draft.activeSceneId = sceneId; draft.updatedAt = now;
+        draft.activeSceneId = sceneId; draft.timelineTracks = buildUnifiedTimelineTracks(draft.scenes, draft.audioTracks, draft.globalOverlays, draft.timelineTracks); draft.canvas.durationInFrames = Math.max(draft.canvas.durationInFrames, sceneStarts(draft).totalFrames); draft.updatedAt = now;
       });
       return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, project: cloned, currentFrame: 0, masterFrame: sceneMasterStart(videoProject, sceneId), playing: false, selectedLayerId: "phone", saveStatus: "unsaved" };
     }),
@@ -680,27 +700,28 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       cloned.id = crypto.randomUUID(); cloned.createdAt = now; cloned.updatedAt = now;
       const videoProject = produce(state.videoProject, (draft) => {
         draft.scenes.splice(index, 0, { id: sceneId, name: cloned.name, order: index, sourceStartFrame: 0, durationInFrames: cloned.canvas.durationInFrames, transitionToNext: { type: "cut", durationInFrames: 15 }, thumbnailDataUrl: cloned.thumbnailDataUrl, composition: cloned, createdAt: now, updatedAt: now });
-        normalizeSceneOrder(draft.scenes); draft.activeSceneId = sceneId; draft.timelineTracks = buildUnifiedTimelineTracks(draft.scenes, draft.audioTracks, draft.globalOverlays, draft.timelineTracks); draft.updatedAt = now;
+        normalizeSceneOrder(draft.scenes); draft.activeSceneId = sceneId; draft.timelineTracks = buildUnifiedTimelineTracks(draft.scenes, draft.audioTracks, draft.globalOverlays, draft.timelineTracks); draft.canvas.durationInFrames = Math.max(draft.canvas.durationInFrames, sceneStarts(draft).totalFrames); draft.updatedAt = now;
       });
       return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, project: cloned, currentFrame: 0, masterFrame: sceneMasterStart(videoProject, sceneId), playing: false, selectedLayerId: "phone", saveStatus: "unsaved" };
     }),
-  addTimelineAssetClip: (type, asset, startFrame, durationInFrames) =>
+  addTimelineAssetClip: (type, asset, startFrame, durationInFrames, trackId) =>
     set((state) => {
       const videoProject = produce(state.videoProject, (draft) => {
         draft.timelineTracks = buildUnifiedTimelineTracks(draft.scenes, draft.audioTracks, draft.globalOverlays, draft.timelineTracks);
-        const track = draft.timelineTracks.find((item) => item.type === type)!;
-        const duration = Math.max(1, Math.round(durationInFrames)), total = resolveMasterFrame(draft, Number.MAX_SAFE_INTEGER).totalFrames;
-        let available = Math.round(clamp(startFrame, 0, Math.max(0, total - duration)));
+        const track = draft.timelineTracks.find((item) => item.id === trackId && item.type === "video") ?? draft.timelineTracks.find((item) => item.type === "video");
+        if (!track || track.locked) return;
+        const duration = Math.max(1, Math.round(durationInFrames));
+        let available = Math.max(0, Math.round(startFrame));
         for (const clip of [...track.clips].sort((a, b) => a.startFrame - b.startFrame)) if (available < clip.startFrame + clip.durationInFrames && available + duration > clip.startFrame) available = clip.startFrame + clip.durationInFrames;
-        available = Math.round(clamp(available, 0, Math.max(0, total - duration)));
-        track.clips.push({ id: crypto.randomUUID(), type, name: asset.name, startFrame: available, durationInFrames: Math.min(duration, total - available), sourceStartFrame: 0, referenceType: "asset", referenceId: asset.id, assetId: asset.id, x: 50, y: 50, scale: 1, opacity: 1, crop: "fit" });
+        track.clips.push({ id: crypto.randomUUID(), type, name: asset.name, startFrame: available, durationInFrames: duration, sourceStartFrame: 0, referenceType: "asset", referenceId: asset.id, assetId: asset.id, x: 50, y: 50, scale: 1, opacity: 1, crop: "fit" });
+        const oldDuration = draft.canvas.durationInFrames; draft.canvas.durationInFrames = Math.max(oldDuration, available + duration); if (draft.workArea.endFrame === oldDuration) draft.workArea.endFrame = draft.canvas.durationInFrames;
         draft.updatedAt = new Date().toISOString();
       });
       return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
     }),
   updateTimelineAssetClip: (clipId, patch) =>
     set((state) => {
-      const videoProject = produce(state.videoProject, (draft) => { const total = resolveMasterFrame(draft, Number.MAX_SAFE_INTEGER).totalFrames, clip = draft.timelineTracks.flatMap((track) => track.clips).find((item) => item.id === clipId && item.referenceType === "asset"); if (clip) { Object.assign(clip, patch); clip.sourceStartFrame = Math.max(0, Math.round(clip.sourceStartFrame)); clip.durationInFrames = Math.max(1, Math.round(clip.durationInFrames)); clip.startFrame = Math.round(clamp(clip.startFrame, 0, Math.max(0, total - clip.durationInFrames))); clip.x = clamp(clip.x, 0, 100); clip.y = clamp(clip.y, 0, 100); clip.scale = clamp(clip.scale, .05, 10); clip.opacity = clamp(clip.opacity, 0, 1); } draft.updatedAt = new Date().toISOString(); });
+      const videoProject = produce(state.videoProject, (draft) => { const clip = draft.timelineTracks.flatMap((track) => track.clips).find((item) => item.id === clipId && item.referenceType === "asset"); if (clip) { Object.assign(clip, patch); clip.sourceStartFrame = Math.max(0, Math.round(clip.sourceStartFrame)); clip.durationInFrames = Math.max(1, Math.round(clip.durationInFrames)); clip.startFrame = Math.max(0, Math.round(clip.startFrame)); clip.x = clamp(clip.x, 0, 100); clip.y = clamp(clip.y, 0, 100); clip.scale = clamp(clip.scale, .05, 10); clip.opacity = clamp(clip.opacity, 0, 1); const oldDuration = draft.canvas.durationInFrames; draft.canvas.durationInFrames = Math.max(oldDuration, clip.startFrame + clip.durationInFrames); if (draft.workArea.endFrame === oldDuration) draft.workArea.endFrame = draft.canvas.durationInFrames; } draft.updatedAt = new Date().toISOString(); });
       return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
     }),
   deleteTimelineAssetClip: (clipId, ripple = false) =>
@@ -717,6 +738,90 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       const videoProject = produce(state.videoProject, (draft) => { const total = resolveMasterFrame(draft, Number.MAX_SAFE_INTEGER).totalFrames; for (const track of draft.timelineTracks) { const clip = track.clips.find((item) => item.id === clipId && item.referenceType === "asset"); if (!clip) continue; let start = Math.min(total - clip.durationInFrames, clip.startFrame + clip.durationInFrames); while (track.clips.some((item) => start < item.startFrame + item.durationInFrames && start + clip.durationInFrames > item.startFrame) && start < total - clip.durationInFrames) start += 5; track.clips.push({ ...clip, id: crypto.randomUUID(), name: `${clip.name} Copy`, startFrame: Math.max(0, start) }); break; } draft.updatedAt = new Date().toISOString(); });
       return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
+  addTimelineTrack: (type) =>
+    set((state) => {
+      const videoProject = produce(state.videoProject, (draft) => {
+        if (type === "audio") {
+          const id = crypto.randomUUID(), count = draft.audioTracks.length + 1;
+          draft.audioTracks.push({ id, name: `Audio ${count}`, type: "music", muted: false, volume: 1, clips: [] });
+          draft.timelineTracks.push({ id: `master-audio:${id}`, type: "audio", name: `Audio ${count}`, order: draft.timelineTracks.length, locked: false, muted: false, visible: true, opacity: 1, solo: false, volume: 1, clips: [] });
+          draft.updatedAt = new Date().toISOString();
+          return;
+        }
+        const count = draft.timelineTracks.filter((track) => track.type === type).length + 1;
+        draft.timelineTracks.push({ id: crypto.randomUUID(), type, name: `${type === "video" ? "Video" : "Audio"} ${count}`, order: draft.timelineTracks.length, locked: false, muted: false, visible: true, opacity: 1, solo: false, volume: 1, clips: [] });
+        draft.updatedAt = new Date().toISOString();
+      });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
+  updateTimelineTrack: (trackId, patch) =>
+    set((state) => {
+      const videoProject = produce(state.videoProject, (draft) => {
+        const track = draft.timelineTracks.find((item) => item.id === trackId);
+        if (track) Object.assign(track, patch, { volume: patch.volume === undefined ? track.volume : clamp(patch.volume, 0, 2) });
+        draft.updatedAt = new Date().toISOString();
+      });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
+  reorderTimelineTrack: (trackId, direction) =>
+    set((state) => {
+      const videoProject = produce(state.videoProject, (draft) => {
+        const ordered = draft.timelineTracks.sort((a, b) => a.order - b.order), index = ordered.findIndex((track) => track.id === trackId), target = index + direction;
+        if (index >= 0 && target >= 0 && target < ordered.length) [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
+        ordered.forEach((track, order) => { track.order = order; });
+        draft.updatedAt = new Date().toISOString();
+      });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
+  duplicateTimelineTrack: (trackId) =>
+    set((state) => {
+      const videoProject = produce(state.videoProject, (draft) => {
+        const source = draft.timelineTracks.find((track) => track.id === trackId);
+        if (source) draft.timelineTracks.push({ ...structuredClone(source), id: crypto.randomUUID(), name: `${source.name} Copy`, order: draft.timelineTracks.length, clips: source.clips.map((clip) => ({ ...clip, id: crypto.randomUUID() })) });
+        draft.updatedAt = new Date().toISOString();
+      });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
+  deleteTimelineTrack: (trackId) =>
+    set((state) => {
+      const videoProject = produce(state.videoProject, (draft) => {
+        draft.timelineTracks = draft.timelineTracks.filter((track) => track.id !== trackId);
+        draft.timelineTracks.forEach((track, order) => { track.order = order; });
+        draft.updatedAt = new Date().toISOString();
+      });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
+  setCompositionDuration: (durationInFrames) =>
+    set((state) => {
+      const videoProject = produce(state.videoProject, (draft) => {
+        const contentEnd = Math.max(1, ...draft.timelineTracks.flatMap((track) => track.clips.map((clip) => clip.startFrame + clip.durationInFrames)), ...draft.audioTracks.flatMap((track) => track.clips.map((clip) => clip.startFrame + clip.durationInFrames)), ...draft.globalOverlays.map((overlay) => overlay.startFrame + overlay.durationInFrames));
+        draft.canvas.durationInFrames = Math.max(contentEnd, Math.round(durationInFrames), 1);
+        draft.workArea.startFrame = Math.min(draft.workArea.startFrame, draft.canvas.durationInFrames - 1);
+        draft.workArea.endFrame = Math.min(Math.max(draft.workArea.startFrame + 1, draft.workArea.endFrame), draft.canvas.durationInFrames);
+        draft.updatedAt = new Date().toISOString();
+      });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
+  setWorkArea: (patch) =>
+    set((state) => {
+      const videoProject = produce(state.videoProject, (draft) => {
+        const start = Math.round(clamp(patch.startFrame ?? draft.workArea.startFrame, 0, draft.canvas.durationInFrames - 1));
+        const end = Math.round(clamp(patch.endFrame ?? draft.workArea.endFrame, start + 1, draft.canvas.durationInFrames));
+        draft.workArea = { enabled: patch.enabled ?? draft.workArea.enabled, startFrame: start, endFrame: end };
+        draft.updatedAt = new Date().toISOString();
+      });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
+  fitCompositionToContent: () =>
+    set((state) => {
+      const videoProject = produce(state.videoProject, (draft) => {
+        draft.canvas.durationInFrames = Math.max(1, ...draft.timelineTracks.flatMap((track) => track.clips.map((clip) => clip.startFrame + clip.durationInFrames)), ...draft.audioTracks.flatMap((track) => track.clips.map((clip) => clip.startFrame + clip.durationInFrames)), ...draft.globalOverlays.map((overlay) => overlay.startFrame + overlay.durationInFrames));
+        draft.workArea.startFrame = Math.min(draft.workArea.startFrame, draft.canvas.durationInFrames - 1);
+        draft.workArea.endFrame = draft.canvas.durationInFrames;
+        draft.updatedAt = new Date().toISOString();
+      });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, masterFrame: Math.min(state.masterFrame, videoProject.canvas.durationInFrames - 1), saveStatus: "unsaved" };
     }),
   undo: () =>
     set((state) => {

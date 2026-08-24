@@ -49,7 +49,29 @@ import { useEditorStore } from "../store/editorStore";
 import type { TransformMode } from "../store/editorStore";
 import { useEditorRuntime } from "../store/useEditorRuntime";
 import { inspectGlb } from "../model/inspectGlb";
-import { createAssetFolder, deleteAsset, deleteAssetFolder, deleteProject as deleteStoredProject, deleteSceneTemplate, duplicateAsset, duplicateStoredProject, listAssetFolders, listAssets, listProjects, listSceneTemplates, loadAssetBlob, moveAsset, renameAsset, renameAssetFolder, renameProject as renameStoredProject, saveAsset, saveSceneTemplate, type AssetFolder, type StoredAsset, type StoredSceneTemplate } from "../persistence/database";
+import {
+  createAssetFolder,
+  deleteAsset,
+  deleteAssetFolder,
+  deleteProject as deleteStoredProject,
+  deleteSceneTemplate,
+  duplicateAsset,
+  duplicateStoredProject,
+  listAssetFolders,
+  listAssets,
+  listProjects,
+  listSceneTemplates,
+  loadAssetBlob,
+  moveAsset,
+  renameAsset,
+  renameAssetFolder,
+  renameProject as renameStoredProject,
+  saveAsset,
+  saveSceneTemplate,
+  type AssetFolder,
+  type StoredAsset,
+  type StoredSceneTemplate,
+} from "../persistence/database";
 import { SceneCanvas } from "../scene/SceneCanvas";
 import { useAssetUrl } from "../model/useAssetUrl";
 import { useTheme, type ThemePreference } from "../theme/useTheme";
@@ -295,7 +317,25 @@ export function App() {
     }
   };
   if (libraryOpen)
-    return <ProjectLibrary currentProject={videoProject} activeComposition={project} onOpen={(selected) => { openVideoProject(selected); setLibraryOpen(false); }} onCreate={() => { createVideoProject(); setLibraryOpen(false); }} onUseTemplate={(template) => { addSceneFromTemplate(template.composition); setLibraryOpen(false); }} onContinue={() => setLibraryOpen(false)} />;
+    return (
+      <ProjectLibrary
+        currentProject={videoProject}
+        activeComposition={project}
+        onOpen={(selected) => {
+          openVideoProject(selected);
+          setLibraryOpen(false);
+        }}
+        onCreate={() => {
+          createVideoProject();
+          setLibraryOpen(false);
+        }}
+        onUseTemplate={(template) => {
+          addSceneFromTemplate(template.composition);
+          setLibraryOpen(false);
+        }}
+        onContinue={() => setLibraryOpen(false)}
+      />
+    );
   if (!sceneEditorOpen)
     return (
       <VideoEditorWorkspace
@@ -359,7 +399,17 @@ export function App() {
           >
             <I.ChevronLeft />
           </button>
-          <button className="icon" aria-label="Open project library" title="Project library" onClick={() => { setPlaying(false); setLibraryOpen(true); }}><I.LayoutGrid /></button>
+          <button
+            className="icon"
+            aria-label="Open project library"
+            title="Project library"
+            onClick={() => {
+              setPlaying(false);
+              setLibraryOpen(true);
+            }}
+          >
+            <I.LayoutGrid />
+          </button>
           <div className="project">
             <input
               aria-label="Project name"
@@ -796,7 +846,14 @@ export function App() {
   );
 }
 
-function ProjectLibrary({ currentProject, activeComposition, onOpen, onCreate, onUseTemplate, onContinue }: {
+function ProjectLibrary({
+  currentProject,
+  activeComposition,
+  onOpen,
+  onCreate,
+  onUseTemplate,
+  onContinue,
+}: {
   currentProject: VideoProject;
   activeComposition: TemplateProject;
   onOpen: (project: VideoProject) => void;
@@ -804,35 +861,292 @@ function ProjectLibrary({ currentProject, activeComposition, onOpen, onCreate, o
   onUseTemplate: (template: StoredSceneTemplate) => void;
   onContinue: () => void;
 }) {
-  const [tab, setTab] = useState<"projects" | "templates">("projects"), [projects, setProjects] = useState<VideoProject[]>([]),
-    [templates, setTemplates] = useState<StoredSceneTemplate[]>([]), [loading, setLoading] = useState(true), [error, setError] = useState("");
+  const [tab, setTab] = useState<"projects" | "templates">("projects"),
+    [projects, setProjects] = useState<VideoProject[]>([]),
+    [templates, setTemplates] = useState<StoredSceneTemplate[]>([]),
+    [loading, setLoading] = useState(true),
+    [error, setError] = useState("");
   const refresh = async () => {
-    setLoading(true); setError("");
-    try { const [savedProjects, savedTemplates] = await Promise.all([listProjects(), listSceneTemplates()]); setProjects(savedProjects); setTemplates(savedTemplates); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "The library could not be loaded."); }
-    finally { setLoading(false); }
+    setLoading(true);
+    setError("");
+    try {
+      const [savedProjects, savedTemplates] = await Promise.all([
+        listProjects(),
+        listSceneTemplates(),
+      ]);
+      setProjects(savedProjects);
+      setTemplates(savedTemplates);
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "The library could not be loaded.",
+      );
+    } finally {
+      setLoading(false);
+    }
   };
-  useEffect(() => { void refresh(); }, []);
-  return <main className="projectLibrary">
-    <header className="libraryHeader">
-      <div className="libraryBrand"><span><I.Clapperboard /></span><div><b>RenderLaunch</b><small>Launch video studio</small></div></div>
-      <div className="actions"><button onClick={onContinue}><I.ArrowRight /> Continue editing</button><button className="primary" onClick={onCreate}><I.Plus /> New video project</button></div>
-    </header>
-    <section className="libraryHero"><div><small>YOUR CREATIVE WORKSPACE</small><h1>Projects and scene templates</h1><p>Build complete launch videos, then reuse your best compositions in future projects.</p></div><div className="currentProjectCard"><small>CURRENT PROJECT</small><b>{currentProject.name}</b><span>{currentProject.scenes.length} scenes · {formatTimecode(sceneStarts(currentProject).totalFrames, currentProject.canvas.fps)}</span><button onClick={onContinue}>Open workspace <I.ArrowRight /></button></div></section>
-    <section className="libraryContent">
-      <div className="libraryTabs"><button className={tab === "projects" ? "active" : ""} onClick={() => setTab("projects")}><I.FolderOpen /> Video projects <span>{projects.length}</span></button><button className={tab === "templates" ? "active" : ""} onClick={() => setTab("templates")}><I.LayoutTemplate /> Scene templates <span>{templates.length}</span></button>{tab === "templates" && <button className="saveSceneTemplate" onClick={async () => { await saveSceneTemplate(activeComposition); await refresh(); }}><I.BookmarkPlus /> Save active scene as template</button>}</div>
-      {error && <div className="libraryError"><I.CircleAlert /> {error}</div>}
-      {loading ? <div className="libraryEmpty"><I.LoaderCircle className="spin" /> Loading library…</div> : tab === "projects" ? (
-        projects.length ? <div className="libraryGrid">{projects.map((project) => <article className="libraryCard" key={project.id}>
-          <button className="libraryThumbnail" onClick={() => onOpen(project)}>{project.thumbnailDataUrl ? <img src={project.thumbnailDataUrl} alt="" /> : project.scenes[0]?.thumbnailDataUrl || project.scenes[0]?.composition.thumbnailDataUrl ? <img src={project.scenes[0].thumbnailDataUrl ?? project.scenes[0].composition.thumbnailDataUrl} alt="" /> : <span><I.Clapperboard /><small>No thumbnail yet</small></span>}<i>{project.scenes.length} scenes</i></button>
-          <div className="libraryCardInfo"><div><b>{project.name}</b><small>Updated {new Date(project.updatedAt).toLocaleDateString()} · {formatTimecode(sceneStarts(project).totalFrames, project.canvas.fps)}</small></div><div className="libraryCardActions"><button title="Rename" onClick={async () => { const name = window.prompt("Rename project", project.name)?.trim(); if (name) { await renameStoredProject(project.id, name); await refresh(); } }}><I.Pencil /></button><button title="Duplicate" onClick={async () => { await duplicateStoredProject(project.id); await refresh(); }}><I.Copy /></button><button className="danger" title="Delete" onClick={async () => { if (window.confirm(`Delete “${project.name}”? This cannot be undone.`)) { await deleteStoredProject(project.id); await refresh(); } }}><I.Trash2 /></button></div></div>
-        </article>)}</div> : <div className="libraryEmpty"><I.FolderPlus /><h2>No saved projects yet</h2><p>Create a project, build your scenes, and save it to see it here.</p><button className="primary" onClick={onCreate}>Create first project</button></div>
-      ) : templates.length ? <div className="libraryGrid">{templates.map((template) => <article className="libraryCard" key={template.id}>
-        <button className={`libraryThumbnail ${bgClass(template.composition.background.preset)}`} style={backgroundStyle(template.composition, 0)} onClick={() => onUseTemplate(template)}>{template.thumbnailDataUrl ? <img src={template.thumbnailDataUrl} alt="" /> : <span><I.LayoutTemplate /><small>Reusable scene</small></span>}<i>{formatTimecode(template.composition.canvas.durationInFrames, template.composition.canvas.fps)}</i></button>
-        <div className="libraryCardInfo"><div><b>{template.name}</b><small>Saved {new Date(template.updatedAt).toLocaleDateString()}</small></div><div className="libraryCardActions"><button title="Add to current video" onClick={() => onUseTemplate(template)}><I.Plus /></button><button className="danger" title="Delete" onClick={async () => { if (window.confirm(`Delete scene template “${template.name}”?`)) { await deleteSceneTemplate(template.id); await refresh(); } }}><I.Trash2 /></button></div></div>
-      </article>)}</div> : <div className="libraryEmpty"><I.LayoutTemplate /><h2>No scene templates yet</h2><p>Save the active composition to reuse its model, animation, text, and timing.</p><button className="primary" onClick={async () => { await saveSceneTemplate(activeComposition); await refresh(); }}>Save active scene</button></div>}
-    </section>
-  </main>;
+  useEffect(() => {
+    void refresh();
+  }, []);
+  return (
+    <main className="projectLibrary">
+      <header className="libraryHeader">
+        <div className="libraryBrand">
+          <span>
+            <I.Clapperboard />
+          </span>
+          <div>
+            <b>RenderLaunch</b>
+            <small>Launch video studio</small>
+          </div>
+        </div>
+        <div className="actions">
+          <button onClick={onContinue}>
+            <I.ArrowRight /> Continue editing
+          </button>
+          <button className="primary" onClick={onCreate}>
+            <I.Plus /> New video project
+          </button>
+        </div>
+      </header>
+      <section className="libraryHero">
+        <div>
+          <small>YOUR CREATIVE WORKSPACE</small>
+          <h1>Projects and scene templates</h1>
+          <p>
+            Build complete launch videos, then reuse your best compositions in
+            future projects.
+          </p>
+        </div>
+        <div className="currentProjectCard">
+          <small>CURRENT PROJECT</small>
+          <b>{currentProject.name}</b>
+          <span>
+            {currentProject.scenes.length} scenes ·{" "}
+            {formatTimecode(
+              sceneStarts(currentProject).totalFrames,
+              currentProject.canvas.fps,
+            )}
+          </span>
+          <button onClick={onContinue}>
+            Open workspace <I.ArrowRight />
+          </button>
+        </div>
+      </section>
+      <section className="libraryContent">
+        <div className="libraryTabs">
+          <button
+            className={tab === "projects" ? "active" : ""}
+            onClick={() => setTab("projects")}
+          >
+            <I.FolderOpen /> Video projects <span>{projects.length}</span>
+          </button>
+          <button
+            className={tab === "templates" ? "active" : ""}
+            onClick={() => setTab("templates")}
+          >
+            <I.LayoutTemplate /> Scene templates <span>{templates.length}</span>
+          </button>
+          {tab === "templates" && (
+            <button
+              className="saveSceneTemplate"
+              onClick={async () => {
+                await saveSceneTemplate(activeComposition);
+                await refresh();
+              }}
+            >
+              <I.BookmarkPlus /> Save active scene as template
+            </button>
+          )}
+        </div>
+        {error && (
+          <div className="libraryError">
+            <I.CircleAlert /> {error}
+          </div>
+        )}
+        {loading ? (
+          <div className="libraryEmpty">
+            <I.LoaderCircle className="spin" /> Loading library…
+          </div>
+        ) : tab === "projects" ? (
+          projects.length ? (
+            <div className="libraryGrid">
+              {projects.map((project) => (
+                <article className="libraryCard" key={project.id}>
+                  <button
+                    className="libraryThumbnail"
+                    onClick={() => onOpen(project)}
+                  >
+                    {project.thumbnailDataUrl ? (
+                      <img src={project.thumbnailDataUrl} alt="" />
+                    ) : project.scenes[0]?.thumbnailDataUrl ||
+                      project.scenes[0]?.composition.thumbnailDataUrl ? (
+                      <img
+                        src={
+                          project.scenes[0].thumbnailDataUrl ??
+                          project.scenes[0].composition.thumbnailDataUrl
+                        }
+                        alt=""
+                      />
+                    ) : (
+                      <span>
+                        <I.Clapperboard />
+                        <small>No thumbnail yet</small>
+                      </span>
+                    )}
+                    <i>{project.scenes.length} scenes</i>
+                  </button>
+                  <div className="libraryCardInfo">
+                    <div>
+                      <b>{project.name}</b>
+                      <small>
+                        Updated{" "}
+                        {new Date(project.updatedAt).toLocaleDateString()} ·{" "}
+                        {formatTimecode(
+                          sceneStarts(project).totalFrames,
+                          project.canvas.fps,
+                        )}
+                      </small>
+                    </div>
+                    <div className="libraryCardActions">
+                      <button
+                        title="Rename"
+                        onClick={async () => {
+                          const name = window
+                            .prompt("Rename project", project.name)
+                            ?.trim();
+                          if (name) {
+                            await renameStoredProject(project.id, name);
+                            await refresh();
+                          }
+                        }}
+                      >
+                        <I.Pencil />
+                      </button>
+                      <button
+                        title="Duplicate"
+                        onClick={async () => {
+                          await duplicateStoredProject(project.id);
+                          await refresh();
+                        }}
+                      >
+                        <I.Copy />
+                      </button>
+                      <button
+                        className="danger"
+                        title="Delete"
+                        onClick={async () => {
+                          if (
+                            window.confirm(
+                              `Delete “${project.name}”? This cannot be undone.`,
+                            )
+                          ) {
+                            await deleteStoredProject(project.id);
+                            await refresh();
+                          }
+                        }}
+                      >
+                        <I.Trash2 />
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="libraryEmpty">
+              <I.FolderPlus />
+              <h2>No saved projects yet</h2>
+              <p>
+                Create a project, build your scenes, and save it to see it here.
+              </p>
+              <button className="primary" onClick={onCreate}>
+                Create first project
+              </button>
+            </div>
+          )
+        ) : templates.length ? (
+          <div className="libraryGrid">
+            {templates.map((template) => (
+              <article className="libraryCard" key={template.id}>
+                <button
+                  className={`libraryThumbnail ${bgClass(template.composition.background.preset)}`}
+                  style={backgroundStyle(template.composition, 0)}
+                  onClick={() => onUseTemplate(template)}
+                >
+                  {template.thumbnailDataUrl ? (
+                    <img src={template.thumbnailDataUrl} alt="" />
+                  ) : (
+                    <span>
+                      <I.LayoutTemplate />
+                      <small>Reusable scene</small>
+                    </span>
+                  )}
+                  <i>
+                    {formatTimecode(
+                      template.composition.canvas.durationInFrames,
+                      template.composition.canvas.fps,
+                    )}
+                  </i>
+                </button>
+                <div className="libraryCardInfo">
+                  <div>
+                    <b>{template.name}</b>
+                    <small>
+                      Saved {new Date(template.updatedAt).toLocaleDateString()}
+                    </small>
+                  </div>
+                  <div className="libraryCardActions">
+                    <button
+                      title="Add to current video"
+                      onClick={() => onUseTemplate(template)}
+                    >
+                      <I.Plus />
+                    </button>
+                    <button
+                      className="danger"
+                      title="Delete"
+                      onClick={async () => {
+                        if (
+                          window.confirm(
+                            `Delete scene template “${template.name}”?`,
+                          )
+                        ) {
+                          await deleteSceneTemplate(template.id);
+                          await refresh();
+                        }
+                      }}
+                    >
+                      <I.Trash2 />
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="libraryEmpty">
+            <I.LayoutTemplate />
+            <h2>No scene templates yet</h2>
+            <p>
+              Save the active composition to reuse its model, animation, text,
+              and timing.
+            </p>
+            <button
+              className="primary"
+              onClick={async () => {
+                await saveSceneTemplate(activeComposition);
+                await refresh();
+              }}
+            >
+              Save active scene
+            </button>
+          </div>
+        )}
+      </section>
+    </main>
+  );
 }
 
 function PopulatedVideoEditorWorkspace({
@@ -886,24 +1200,40 @@ function PopulatedVideoEditorWorkspace({
 }) {
   const [masterZoom, setMasterZoom] = useState(1),
     [masterExporting, setMasterExporting] = useState(false),
-    [masterLibraryTab, setMasterLibraryTab] = useState<"scenes" | "assets" | "templates">("scenes"),
+    [masterLibraryTab, setMasterLibraryTab] = useState<
+      "scenes" | "assets" | "templates"
+    >("scenes"),
     [libraryAssets, setLibraryAssets] = useState<StoredAsset[]>([]),
     [assetFolders, setAssetFolders] = useState<AssetFolder[]>([]),
     [assetFolderId, setAssetFolderId] = useState("all"),
     [assetSearch, setAssetSearch] = useState(""),
-    [assetFilter, setAssetFilter] = useState<"all" | "image" | "video" | "audio" | "model">("all"),
+    [assetFilter, setAssetFilter] = useState<
+      "all" | "image" | "video" | "audio" | "model"
+    >("all"),
     [assetView, setAssetView] = useState<"list" | "grid">("list"),
-    [masterSceneTemplates, setMasterSceneTemplates] = useState<StoredSceneTemplate[]>([]),
+    [masterSceneTemplates, setMasterSceneTemplates] = useState<
+      StoredSceneTemplate[]
+    >([]),
     [dragTargetTrack, setDragTargetTrack] = useState<string>(),
     [masterLeftWidth, setMasterLeftWidth] = useState(248),
     [masterRightWidth, setMasterRightWidth] = useState(276),
-    [masterTimelineHeight, setMasterTimelineHeight] = useState(() => Math.round(clamp(window.innerHeight * .38, 260, 460))),
+    [masterTimelineHeight, setMasterTimelineHeight] = useState(() =>
+      Math.round(clamp(window.innerHeight * 0.38, 260, 460)),
+    ),
     [draggedSceneId, setDraggedSceneId] = useState<string>(),
     [selectedAssetClipId, setSelectedAssetClipId] = useState<string>(),
     [selectedTimelineIds, setSelectedTimelineIds] = useState<string[]>([]),
-    [timelineMarquee, setTimelineMarquee] = useState<{ left: number; top: number; width: number; height: number }>(),
+    [timelineMarquee, setTimelineMarquee] = useState<{
+      left: number;
+      top: number;
+      width: number;
+      height: number;
+    }>(),
     [rippleDelete, setRippleDelete] = useState(false),
-    [selectedAudio, setSelectedAudio] = useState<{ trackId: string; clipId: string }>(),
+    [selectedAudio, setSelectedAudio] = useState<{
+      trackId: string;
+      clipId: string;
+    }>(),
     [selectedOverlayId, setSelectedOverlayId] = useState<string>(),
     [audioError, setAudioError] = useState(""),
     [trimPreview, setTrimPreview] = useState<{
@@ -920,12 +1250,31 @@ function PopulatedVideoEditorWorkspace({
   const addGlobalOverlay = useEditorStore((state) => state.addGlobalOverlay),
     updateGlobalOverlay = useEditorStore((state) => state.updateGlobalOverlay),
     deleteGlobalOverlay = useEditorStore((state) => state.deleteGlobalOverlay);
-  const insertSceneFromTemplate = useEditorStore((state) => state.insertSceneFromTemplate),
-    addTimelineAssetClip = useEditorStore((state) => state.addTimelineAssetClip),
-    updateTimelineAssetClip = useEditorStore((state) => state.updateTimelineAssetClip),
-    deleteTimelineAssetClip = useEditorStore((state) => state.deleteTimelineAssetClip),
-    splitTimelineAssetClip = useEditorStore((state) => state.splitTimelineAssetClip),
-    duplicateTimelineAssetClip = useEditorStore((state) => state.duplicateTimelineAssetClip);
+  const insertSceneFromTemplate = useEditorStore(
+      (state) => state.insertSceneFromTemplate,
+    ),
+    addTimelineAssetClip = useEditorStore(
+      (state) => state.addTimelineAssetClip,
+    ),
+    updateTimelineAssetClip = useEditorStore(
+      (state) => state.updateTimelineAssetClip,
+    ),
+    deleteTimelineAssetClip = useEditorStore(
+      (state) => state.deleteTimelineAssetClip,
+    ),
+    splitTimelineAssetClip = useEditorStore(
+      (state) => state.splitTimelineAssetClip,
+    ),
+    duplicateTimelineAssetClip = useEditorStore(
+      (state) => state.duplicateTimelineAssetClip,
+    ),
+    setCompositionDuration = useEditorStore(
+      (state) => state.setCompositionDuration,
+    ),
+    setWorkArea = useEditorStore((state) => state.setWorkArea),
+    fitCompositionToContent = useEditorStore(
+      (state) => state.fitCompositionToContent,
+    );
   const normalizedVideoProject = {
       ...videoProject,
       scenes: videoProject.scenes.map((scene) => ({
@@ -962,19 +1311,44 @@ function PopulatedVideoEditorWorkspace({
       : expectedMasterFrame,
     playback = resolveMasterFrame(normalizedVideoProject, shownMasterFrame),
     nextScene = scenes[activeIndex + 1];
-  const unifiedTimelineTracks = buildUnifiedTimelineTracks(scenes, videoProject.audioTracks, videoProject.globalOverlays, videoProject.timelineTracks),
-    videoTimelineTrack = unifiedTimelineTracks.find((track) => track.type === "video")!,
-    imageTimelineTrack = unifiedTimelineTracks.find((track) => track.type === "image")!,
-    sceneTimelineTrack = unifiedTimelineTracks.find((track) => track.type === "scene")!,
-    masterVideoTrack = { ...videoTimelineTrack, name: "Video", clips: [...sceneTimelineTrack.clips, ...videoTimelineTrack.clips] };
+  const unifiedTimelineTracks = buildUnifiedTimelineTracks(
+      scenes,
+      videoProject.audioTracks,
+      videoProject.globalOverlays,
+      videoProject.timelineTracks,
+    ),
+    videoTimelineTrack = unifiedTimelineTracks.find(
+      (track) => track.type === "video",
+    )!,
+    imageTimelineTrack = videoTimelineTrack,
+    sceneTimelineTrack = videoTimelineTrack,
+    masterVideoTrack = {
+      ...videoTimelineTrack,
+      name: "Video",
+      clips: [...sceneTimelineTrack.clips, ...videoTimelineTrack.clips],
+    };
   const selectedClip = selectedAudio
     ? videoProject.audioTracks
         .find((track) => track.id === selectedAudio.trackId)
         ?.clips.find((clip) => clip.id === selectedAudio.clipId)
     : undefined;
-  const selectedOverlay = videoProject.globalOverlays.find((overlay) => overlay.id === selectedOverlayId);
-  const selectedAssetClip = unifiedTimelineTracks.flatMap((track) => track.clips).find((clip) => clip.id === selectedAssetClipId && clip.referenceType === "asset");
-  const selectTimelineClip = (id: string, additive = false) => setSelectedTimelineIds((current) => additive ? current.includes(id) ? current.filter((item) => item !== id) : [...current, id] : [id]);
+  const selectedOverlay = videoProject.globalOverlays.find(
+    (overlay) => overlay.id === selectedOverlayId,
+  );
+  const selectedAssetClip = unifiedTimelineTracks
+    .flatMap((track) => track.clips)
+    .find(
+      (clip) =>
+        clip.id === selectedAssetClipId && clip.referenceType === "asset",
+    );
+  const selectTimelineClip = (id: string, additive = false) =>
+    setSelectedTimelineIds((current) =>
+      additive
+        ? current.includes(id)
+          ? current.filter((item) => item !== id)
+          : [...current, id]
+        : [id],
+    );
   const deleteTimelineSelection = () => {
     selectedTimelineIds.forEach((selection) => {
       const [kind, first, second] = selection.split(":");
@@ -982,47 +1356,123 @@ function PopulatedVideoEditorWorkspace({
       else if (kind === "audio") deleteAudioClip(first, second);
       else if (kind === "overlay") deleteGlobalOverlay(first);
     });
-    setSelectedTimelineIds([]); setSelectedAssetClipId(undefined); setSelectedAudio(undefined); setSelectedOverlayId(undefined);
+    setSelectedTimelineIds([]);
+    setSelectedAssetClipId(undefined);
+    setSelectedAudio(undefined);
+    setSelectedOverlayId(undefined);
   };
-  const updateSelectedTiming = (operation: "shift" | "duration" | "align", value: number) => selectedTimelineIds.forEach((selection) => {
-    const [kind, first, second] = selection.split(":"), assetClip = kind === "asset" ? unifiedTimelineTracks.flatMap((track) => track.clips).find((clip) => clip.id === first) : undefined,
-      audioClip = kind === "audio" ? videoProject.audioTracks.find((track) => track.id === first)?.clips.find((clip) => clip.id === second) : undefined,
-      overlay = kind === "overlay" ? videoProject.globalOverlays.find((item) => item.id === first) : undefined;
-    const currentStart = assetClip?.startFrame ?? audioClip?.startFrame ?? overlay?.startFrame ?? 0,
-      patch = operation === "duration" ? { durationInFrames: Math.max(1, Math.round(value)) } : { startFrame: Math.max(0, Math.round(operation === "align" ? value : currentStart + value)) };
-    if (assetClip) updateTimelineAssetClip(assetClip.id, patch);
-    else if (audioClip) updateAudioClip(first, second, patch);
-    else if (overlay) updateGlobalOverlay(first, patch);
-  });
+  const updateSelectedTiming = (
+    operation: "shift" | "duration" | "align",
+    value: number,
+  ) =>
+    selectedTimelineIds.forEach((selection) => {
+      const [kind, first, second] = selection.split(":"),
+        assetClip =
+          kind === "asset"
+            ? unifiedTimelineTracks
+                .flatMap((track) => track.clips)
+                .find((clip) => clip.id === first)
+            : undefined,
+        audioClip =
+          kind === "audio"
+            ? videoProject.audioTracks
+                .find((track) => track.id === first)
+                ?.clips.find((clip) => clip.id === second)
+            : undefined,
+        overlay =
+          kind === "overlay"
+            ? videoProject.globalOverlays.find((item) => item.id === first)
+            : undefined;
+      const currentStart =
+          assetClip?.startFrame ??
+          audioClip?.startFrame ??
+          overlay?.startFrame ??
+          0,
+        patch =
+          operation === "duration"
+            ? { durationInFrames: Math.max(1, Math.round(value)) }
+            : {
+                startFrame: Math.max(
+                  0,
+                  Math.round(
+                    operation === "align" ? value : currentStart + value,
+                  ),
+                ),
+              };
+      if (assetClip) updateTimelineAssetClip(assetClip.id, patch);
+      else if (audioClip) updateAudioClip(first, second, patch);
+      else if (overlay) updateGlobalOverlay(first, patch);
+    });
   const refreshAssetLibrary = async () => {
-    const [assets, folders] = await Promise.all([listAssets(), listAssetFolders()]);
-    setLibraryAssets(assets); setAssetFolders(folders);
+    const [assets, folders] = await Promise.all([
+      listAssets(),
+      listAssetFolders(),
+    ]);
+    setLibraryAssets(assets);
+    setAssetFolders(folders);
   };
-  useEffect(() => { if (masterLibraryTab === "assets") void refreshAssetLibrary(); if (masterLibraryTab === "templates") void listSceneTemplates().then(setMasterSceneTemplates); }, [masterLibraryTab]);
+  useEffect(() => {
+    if (masterLibraryTab === "assets") void refreshAssetLibrary();
+    if (masterLibraryTab === "templates")
+      void listSceneTemplates().then(setMasterSceneTemplates);
+  }, [masterLibraryTab]);
   const uploadLibraryAssets = async (files: FileList | null) => {
     if (!files?.length) return;
     setAudioError("");
     try {
       for (const file of Array.from(files)) {
         const kind = assetMediaKind({ type: file.type, name: file.name });
-        if (kind === "other") throw new Error(`${file.name} is not a supported image, video, audio, or GLB file.`);
-        await saveAsset(file, assetFolderId === "all" || assetFolderId === "root" ? undefined : assetFolderId);
+        if (kind === "other")
+          throw new Error(
+            `${file.name} is not a supported image, video, audio, or GLB file.`,
+          );
+        await saveAsset(
+          file,
+          assetFolderId === "all" || assetFolderId === "root"
+            ? undefined
+            : assetFolderId,
+        );
       }
       await refreshAssetLibrary();
-    } catch (error) { setAudioError(error instanceof Error ? error.message : "The assets could not be uploaded."); }
+    } catch (error) {
+      setAudioError(
+        error instanceof Error
+          ? error.message
+          : "The assets could not be uploaded.",
+      );
+    }
   };
-  const referencedAssetIds = new Set([
-    ...videoProject.scenes.flatMap((scene) => [scene.composition.model?.assetId, scene.composition.screen?.mediaAssetId, ...scene.composition.layers.map((layer) => layer.media?.assetId)]),
-    ...videoProject.audioTracks.flatMap((track) => track.clips.map((clip) => clip.assetId)),
-    ...videoProject.globalOverlays.map((overlay) => overlay.assetId),
-  ].filter((id): id is string => Boolean(id)));
-  const missingAssetIds = [...referencedAssetIds].filter((id) => !libraryAssets.some((asset) => asset.id === id)),
-    filteredLibraryAssets = libraryAssets.filter((asset) => (assetFolderId === "all" || (assetFolderId === "root" ? !asset.folderId : asset.folderId === assetFolderId)) && (assetFilter === "all" || assetMediaKind(asset) === assetFilter) && asset.name.toLowerCase().includes(assetSearch.toLowerCase()));
+  const referencedAssetIds = new Set(
+    [
+      ...videoProject.scenes.flatMap((scene) => [
+        scene.composition.model?.assetId,
+        scene.composition.screen?.mediaAssetId,
+        ...scene.composition.layers.map((layer) => layer.media?.assetId),
+      ]),
+      ...videoProject.audioTracks.flatMap((track) =>
+        track.clips.map((clip) => clip.assetId),
+      ),
+      ...videoProject.globalOverlays.map((overlay) => overlay.assetId),
+    ].filter((id): id is string => Boolean(id)),
+  );
+  const missingAssetIds = [...referencedAssetIds].filter(
+      (id) => !libraryAssets.some((asset) => asset.id === id),
+    ),
+    filteredLibraryAssets = libraryAssets.filter(
+      (asset) =>
+        (assetFolderId === "all" ||
+          (assetFolderId === "root"
+            ? !asset.folderId
+            : asset.folderId === assetFolderId)) &&
+        (assetFilter === "all" || assetMediaKind(asset) === assetFilter) &&
+        asset.name.toLowerCase().includes(assetSearch.toLowerCase()),
+    );
   const uploadAudio = async (trackId: string, file?: File) => {
     if (!file) return;
     setAudioError("");
     try {
-      if (!file.type.startsWith("audio/")) throw new Error("Choose an audio file.");
+      if (!file.type.startsWith("audio/"))
+        throw new Error("Choose an audio file.");
       const details = await inspectAudio(file, videoProject.canvas.fps),
         assetId = await saveAsset(file),
         clip: AudioClip = {
@@ -1031,7 +1481,13 @@ function PopulatedVideoEditorWorkspace({
           fileName: file.name,
           startFrame: Math.round(clamp(shownMasterFrame, 0, totalFrames - 1)),
           sourceStartFrame: 0,
-          durationInFrames: Math.max(1, Math.min(details.durationInFrames, totalFrames - Math.round(shownMasterFrame))),
+          durationInFrames: Math.max(
+            1,
+            Math.min(
+              details.durationInFrames,
+              totalFrames - Math.round(shownMasterFrame),
+            ),
+          ),
           sourceDurationInFrames: details.durationInFrames,
           volume: 1,
           muted: false,
@@ -1042,48 +1498,175 @@ function PopulatedVideoEditorWorkspace({
       addAudioClip(trackId, clip);
       setSelectedAudio({ trackId, clipId: clip.id });
     } catch (error) {
-      setAudioError(error instanceof Error ? error.message : "The audio could not be loaded.");
+      setAudioError(
+        error instanceof Error
+          ? error.message
+          : "The audio could not be loaded.",
+      );
     }
   };
   const uploadOverlayImage = async (overlayId: string, file?: File) => {
     if (!file) return;
-    if (!file.type.startsWith("image/")) { setAudioError("Choose an image file for the overlay."); return; }
+    if (!file.type.startsWith("image/")) {
+      setAudioError("Choose an image file for the overlay.");
+      return;
+    }
     const assetId = await saveAsset(file);
     updateGlobalOverlay(overlayId, { assetId, fileName: file.name });
   };
   const snapDropFrame = (frame: number) => {
-    const grid = Math.round(frame / 5) * 5, points = [0, totalFrames, shownMasterFrame, ...timeline.starts];
-    return Math.round(clamp(points.reduce((best, point) => Math.abs(point - frame) <= 8 && Math.abs(point - frame) < Math.abs(best - frame) ? point : best, grid), 0, totalFrames - 1));
+    const grid = Math.round(frame / 5) * 5,
+      points = [0, totalFrames, shownMasterFrame, ...timeline.starts];
+    return Math.round(
+      clamp(
+        points.reduce(
+          (best, point) =>
+            Math.abs(point - frame) <= 8 &&
+            Math.abs(point - frame) < Math.abs(best - frame)
+              ? point
+              : best,
+          grid,
+        ),
+        0,
+        totalFrames - 1,
+      ),
+    );
   };
   const dropFrame = (event: React.DragEvent<HTMLElement>) => {
-    const lane = event.currentTarget.querySelector<HTMLElement>(".dropTimelineContent") ?? event.currentTarget,
+    const lane =
+        event.currentTarget.querySelector<HTMLElement>(
+          ".dropTimelineContent",
+        ) ?? event.currentTarget,
       rect = lane.getBoundingClientRect();
-    return snapDropFrame(((event.clientX - rect.left) / Math.max(1, rect.width)) * totalFrames);
+    return snapDropFrame(
+      ((event.clientX - rect.left) / Math.max(1, rect.width)) * totalFrames,
+    );
   };
-  const dropLibraryAsset = async (event: React.DragEvent<HTMLElement>, trackType: "image" | "video" | "audio", audioTrackId?: string) => {
-    event.preventDefault(); setDragTargetTrack(undefined);
-    const encoded = event.dataTransfer.getData("application/x-renderlaunch-asset");
+  const beginWorkAreaEdit = (
+    event: React.PointerEvent<HTMLElement>,
+    edge: "start" | "end",
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const target = event.currentTarget,
+      viewport = target.closest<HTMLElement>(".masterTimelineViewport")!,
+      rect = viewport.getBoundingClientRect();
+    target.setPointerCapture(event.pointerId);
+    const move = (pointerEvent: globalThis.PointerEvent) => {
+      const next = Math.round(
+        clamp(
+          ((pointerEvent.clientX - rect.left + viewport.scrollLeft) /
+            Math.max(1, viewport.scrollWidth)) *
+            totalFrames,
+          0,
+          totalFrames,
+        ),
+      );
+      if (edge === "start")
+        setWorkArea({
+          startFrame: Math.min(next, videoProject.workArea.endFrame - 1),
+        });
+      else
+        setWorkArea({
+          endFrame: Math.max(next, videoProject.workArea.startFrame + 1),
+        });
+    };
+    const end = () => {
+      target.removeEventListener("pointermove", move);
+      target.removeEventListener("pointerup", end);
+    };
+    target.addEventListener("pointermove", move);
+    target.addEventListener("pointerup", end);
+  };
+  const dropLibraryAsset = async (
+    event: React.DragEvent<HTMLElement>,
+    trackType: "image" | "video" | "audio",
+    audioTrackId?: string,
+  ) => {
+    event.preventDefault();
+    setDragTargetTrack(undefined);
+    const encoded = event.dataTransfer.getData(
+      "application/x-renderlaunch-asset",
+    );
     if (!encoded) return;
-    const payload = JSON.parse(encoded) as { assetId: string; kind: string; name: string }, expected = trackType === "audio" ? "audio" : trackType;
-    if (payload.kind !== expected) { setAudioError(`${payload.name} cannot be placed on a ${trackType} track.`); return; }
-    const startFrame = dropFrame(event), asset = libraryAssets.find((item) => item.id === payload.assetId), blob = await loadAssetBlob(payload.assetId);
-    if (!asset || !blob) { setAudioError("That library asset is missing."); return; }
+    const payload = JSON.parse(encoded) as {
+        assetId: string;
+        kind: string;
+        name: string;
+      },
+      expected = trackType === "audio" ? "audio" : trackType;
+    if (payload.kind !== expected) {
+      setAudioError(
+        `${payload.name} cannot be placed on a ${trackType} track.`,
+      );
+      return;
+    }
+    const startFrame = dropFrame(event),
+      asset = libraryAssets.find((item) => item.id === payload.assetId),
+      blob = await loadAssetBlob(payload.assetId);
+    if (!asset || !blob) {
+      setAudioError("That library asset is missing.");
+      return;
+    }
     if (trackType === "audio" && audioTrackId) {
-      const file = new File([blob], asset.name, { type: asset.type }), details = await inspectAudio(file, videoProject.canvas.fps);
-      addAudioClip(audioTrackId, { id: crypto.randomUUID(), assetId: asset.id, fileName: asset.name, startFrame, sourceStartFrame: 0, durationInFrames: Math.max(1, Math.min(details.durationInFrames, totalFrames - startFrame)), sourceDurationInFrames: details.durationInFrames, volume: 1, muted: false, fadeInFrames: 0, fadeOutFrames: 0, waveform: details.waveform });
+      const file = new File([blob], asset.name, { type: asset.type }),
+        details = await inspectAudio(file, videoProject.canvas.fps);
+      addAudioClip(audioTrackId, {
+        id: crypto.randomUUID(),
+        assetId: asset.id,
+        fileName: asset.name,
+        startFrame,
+        sourceStartFrame: 0,
+        durationInFrames: Math.max(
+          1,
+          Math.min(details.durationInFrames, totalFrames - startFrame),
+        ),
+        sourceDurationInFrames: details.durationInFrames,
+        volume: 1,
+        muted: false,
+        fadeInFrames: 0,
+        fadeOutFrames: 0,
+        waveform: details.waveform,
+      });
     } else if (trackType !== "audio") {
-      const duration = trackType === "video" ? await inspectMediaDurationFrames(blob, asset.type, videoProject.canvas.fps) : Math.min(150, totalFrames - startFrame);
-      addTimelineAssetClip(trackType, { id: asset.id, name: asset.name }, startFrame, duration);
+      const duration =
+        trackType === "video"
+          ? await inspectMediaDurationFrames(
+              blob,
+              asset.type,
+              videoProject.canvas.fps,
+            )
+          : Math.min(150, totalFrames - startFrame);
+      addTimelineAssetClip(
+        trackType,
+        { id: asset.id, name: asset.name },
+        startFrame,
+        duration,
+      );
     }
   };
   const dropSceneTemplate = (event: React.DragEvent<HTMLElement>) => {
-    const encoded = event.dataTransfer.getData("application/x-renderlaunch-template");
+    const encoded = event.dataTransfer.getData(
+      "application/x-renderlaunch-template",
+    );
     if (!encoded) return;
-    event.preventDefault(); setDragTargetTrack(undefined);
-    const payload = JSON.parse(encoded) as { templateId?: string; sceneId?: string }, template = payload.templateId ? masterSceneTemplates.find((item) => item.id === payload.templateId)?.composition : scenes.find((scene) => scene.id === payload.sceneId)?.composition;
+    event.preventDefault();
+    setDragTargetTrack(undefined);
+    const payload = JSON.parse(encoded) as {
+        templateId?: string;
+        sceneId?: string;
+      },
+      template = payload.templateId
+        ? masterSceneTemplates.find((item) => item.id === payload.templateId)
+            ?.composition
+        : scenes.find((scene) => scene.id === payload.sceneId)?.composition;
     if (!template) return;
-    const frame = dropFrame(event), targetIndex = timeline.starts.findIndex((start) => start >= frame);
-    insertSceneFromTemplate(template, targetIndex < 0 ? scenes.length : targetIndex);
+    const frame = dropFrame(event),
+      targetIndex = timeline.starts.findIndex((start) => start >= frame);
+    insertSceneFromTemplate(
+      template,
+      targetIndex < 0 ? scenes.length : targetIndex,
+    );
   };
   useEffect(() => {
     const shortcuts = (event: KeyboardEvent) => {
@@ -1092,17 +1675,38 @@ function PopulatedVideoEditorWorkspace({
         return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
         event.preventDefault();
-        setSelectedTimelineIds(Array.from(masterTimelinePanelRef.current?.querySelectorAll<HTMLElement>("[data-timeline-clip-id]") ?? []).map((element) => element.dataset.timelineClipId!).filter(Boolean));
-      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
+        setSelectedTimelineIds(
+          Array.from(
+            masterTimelinePanelRef.current?.querySelectorAll<HTMLElement>(
+              "[data-timeline-clip-id]",
+            ) ?? [],
+          )
+            .map((element) => element.dataset.timelineClipId!)
+            .filter(Boolean),
+        );
+      } else if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "d"
+      ) {
         event.preventDefault();
-        if (selectedAssetClipId) duplicateTimelineAssetClip(selectedAssetClipId);
+        if (selectedAssetClipId)
+          duplicateTimelineAssetClip(selectedAssetClipId);
         else onDuplicateScene();
-      } else if ((event.key === "Delete" || event.key === "Backspace") && selectedTimelineIds.length) {
-        event.preventDefault(); deleteTimelineSelection();
-      } else if (event.key === "Delete" && (selectedAssetClipId || scenes.length > 0)) {
+      } else if (
+        (event.key === "Delete" || event.key === "Backspace") &&
+        selectedTimelineIds.length
+      ) {
         event.preventDefault();
-        if (selectedAssetClipId) { deleteTimelineAssetClip(selectedAssetClipId, rippleDelete); setSelectedAssetClipId(undefined); }
-        else onDeleteScene();
+        deleteTimelineSelection();
+      } else if (
+        event.key === "Delete" &&
+        (selectedAssetClipId || scenes.length > 0)
+      ) {
+        event.preventDefault();
+        if (selectedAssetClipId) {
+          deleteTimelineAssetClip(selectedAssetClipId, rippleDelete);
+          setSelectedAssetClipId(undefined);
+        } else onDeleteScene();
       } else if (
         event.key.toLowerCase() === "s" &&
         !event.ctrlKey &&
@@ -1110,13 +1714,34 @@ function PopulatedVideoEditorWorkspace({
         (selectedAssetClipId || visibleFrame > 0)
       ) {
         event.preventDefault();
-        if (selectedAssetClip && shownMasterFrame > selectedAssetClip.startFrame && shownMasterFrame < selectedAssetClip.startFrame + selectedAssetClip.durationInFrames) splitTimelineAssetClip(selectedAssetClip.id, shownMasterFrame);
+        if (
+          selectedAssetClip &&
+          shownMasterFrame > selectedAssetClip.startFrame &&
+          shownMasterFrame <
+            selectedAssetClip.startFrame + selectedAssetClip.durationInFrames
+        )
+          splitTimelineAssetClip(selectedAssetClip.id, shownMasterFrame);
         else onSplitScene(activeScene.id, visibleFrame);
       }
     };
     window.addEventListener("keydown", shortcuts);
     return () => window.removeEventListener("keydown", shortcuts);
-  }, [activeScene.id, deleteTimelineAssetClip, duplicateTimelineAssetClip, onDeleteScene, onDuplicateScene, onSplitScene, rippleDelete, scenes.length, selectedAssetClip, selectedAssetClipId, selectedTimelineIds, shownMasterFrame, splitTimelineAssetClip, visibleFrame]);
+  }, [
+    activeScene.id,
+    deleteTimelineAssetClip,
+    duplicateTimelineAssetClip,
+    onDeleteScene,
+    onDuplicateScene,
+    onSplitScene,
+    rippleDelete,
+    scenes.length,
+    selectedAssetClip,
+    selectedAssetClipId,
+    selectedTimelineIds,
+    shownMasterFrame,
+    splitTimelineAssetClip,
+    visibleFrame,
+  ]);
   const seekMasterFrame = (nextMasterFrame: number) => {
     let cursor = 0;
     for (const scene of scenes) {
@@ -1188,43 +1813,127 @@ function PopulatedVideoEditorWorkspace({
     target.addEventListener("pointerup", end);
     target.addEventListener("pointercancel", end);
   };
-  const resizeMasterPanel = (event: React.PointerEvent<HTMLDivElement>, panel: "left" | "right" | "timeline") => {
+  const resizeMasterPanel = (
+    event: React.PointerEvent<HTMLDivElement>,
+    panel: "left" | "right" | "timeline",
+  ) => {
     event.preventDefault();
-    const target = event.currentTarget, startX = event.clientX, startY = event.clientY,
-      startValue = panel === "left" ? masterLeftWidth : panel === "right" ? masterRightWidth : masterTimelineHeight;
+    const target = event.currentTarget,
+      startX = event.clientX,
+      startY = event.clientY,
+      startValue =
+        panel === "left"
+          ? masterLeftWidth
+          : panel === "right"
+            ? masterRightWidth
+            : masterTimelineHeight;
     target.setPointerCapture(event.pointerId);
     const move = (pointerEvent: globalThis.PointerEvent) => {
-      if (panel === "left") setMasterLeftWidth(clamp(startValue + pointerEvent.clientX - startX, 190, 360));
-      else if (panel === "right") setMasterRightWidth(clamp(startValue + startX - pointerEvent.clientX, 230, 390));
-      else setMasterTimelineHeight(clamp(startValue + startY - pointerEvent.clientY, 240, window.innerHeight * .55));
+      if (panel === "left")
+        setMasterLeftWidth(
+          clamp(startValue + pointerEvent.clientX - startX, 190, 360),
+        );
+      else if (panel === "right")
+        setMasterRightWidth(
+          clamp(startValue + startX - pointerEvent.clientX, 230, 390),
+        );
+      else
+        setMasterTimelineHeight(
+          clamp(
+            startValue + startY - pointerEvent.clientY,
+            240,
+            window.innerHeight * 0.55,
+          ),
+        );
     };
-    const end = () => { target.removeEventListener("pointermove", move); target.removeEventListener("pointerup", end); target.removeEventListener("pointercancel", end); };
-    target.addEventListener("pointermove", move); target.addEventListener("pointerup", end); target.addEventListener("pointercancel", end);
+    const end = () => {
+      target.removeEventListener("pointermove", move);
+      target.removeEventListener("pointerup", end);
+      target.removeEventListener("pointercancel", end);
+    };
+    target.addEventListener("pointermove", move);
+    target.addEventListener("pointerup", end);
+    target.addEventListener("pointercancel", end);
   };
   const beginTimelineMarquee = (event: React.PointerEvent<HTMLElement>) => {
-    if (event.button !== 0 || (event.target as HTMLElement).closest("[data-timeline-clip-id], button, input, select, .masterPanelResize")) return;
+    if (
+      event.button !== 0 ||
+      (event.target as HTMLElement).closest(
+        "[data-timeline-clip-id], button, input, select, .masterPanelResize",
+      )
+    )
+      return;
     const panel = masterTimelinePanelRef.current;
     if (!panel) return;
     event.preventDefault();
-    const bounds = panel.getBoundingClientRect(), startX = event.clientX, startY = event.clientY,
-      toLocal = (x: number, y: number) => ({ x: x - bounds.left + panel.scrollLeft, y: y - bounds.top + panel.scrollTop });
+    const bounds = panel.getBoundingClientRect(),
+      startX = event.clientX,
+      startY = event.clientY,
+      toLocal = (x: number, y: number) => ({
+        x: x - bounds.left + panel.scrollLeft,
+        y: y - bounds.top + panel.scrollTop,
+      });
     if (!event.ctrlKey && !event.metaKey) setSelectedTimelineIds([]);
-    const additive = event.ctrlKey || event.metaKey, initial = additive ? selectedTimelineIds : [];
+    const additive = event.ctrlKey || event.metaKey,
+      initial = additive ? selectedTimelineIds : [];
     const move = (pointerEvent: globalThis.PointerEvent) => {
-      const start = toLocal(startX, startY), current = toLocal(pointerEvent.clientX, pointerEvent.clientY), left = Math.min(start.x, current.x), top = Math.min(start.y, current.y), width = Math.abs(current.x - start.x), height = Math.abs(current.y - start.y);
+      const start = toLocal(startX, startY),
+        current = toLocal(pointerEvent.clientX, pointerEvent.clientY),
+        left = Math.min(start.x, current.x),
+        top = Math.min(start.y, current.y),
+        width = Math.abs(current.x - start.x),
+        height = Math.abs(current.y - start.y);
       setTimelineMarquee({ left, top, width, height });
-      const selectionBounds = { left: Math.min(startX, pointerEvent.clientX), right: Math.max(startX, pointerEvent.clientX), top: Math.min(startY, pointerEvent.clientY), bottom: Math.max(startY, pointerEvent.clientY) };
-      const hits = Array.from(panel.querySelectorAll<HTMLElement>("[data-timeline-clip-id]")).filter((element) => { const rect = element.getBoundingClientRect(); return rect.right >= selectionBounds.left && rect.left <= selectionBounds.right && rect.bottom >= selectionBounds.top && rect.top <= selectionBounds.bottom; }).map((element) => element.dataset.timelineClipId!).filter(Boolean);
+      const selectionBounds = {
+        left: Math.min(startX, pointerEvent.clientX),
+        right: Math.max(startX, pointerEvent.clientX),
+        top: Math.min(startY, pointerEvent.clientY),
+        bottom: Math.max(startY, pointerEvent.clientY),
+      };
+      const hits = Array.from(
+        panel.querySelectorAll<HTMLElement>("[data-timeline-clip-id]"),
+      )
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          return (
+            rect.right >= selectionBounds.left &&
+            rect.left <= selectionBounds.right &&
+            rect.bottom >= selectionBounds.top &&
+            rect.top <= selectionBounds.bottom
+          );
+        })
+        .map((element) => element.dataset.timelineClipId!)
+        .filter(Boolean);
       setSelectedTimelineIds([...new Set([...initial, ...hits])]);
     };
-    const end = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", end); setTimelineMarquee(undefined); };
-    window.addEventListener("pointermove", move); window.addEventListener("pointerup", end, { once: true });
+    const end = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      setTimelineMarquee(undefined);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end, { once: true });
   };
   return (
-    <main className="videoEditorWorkspace masterWorkspaceV2" style={{ "--master-left": `${masterLeftWidth}px`, "--master-right": `${masterRightWidth}px`, "--master-timeline": `${masterTimelineHeight}px` } as React.CSSProperties}>
+    <main
+      className="videoEditorWorkspace masterWorkspaceV2"
+      style={
+        {
+          "--master-left": `${masterLeftWidth}px`,
+          "--master-right": `${masterRightWidth}px`,
+          "--master-timeline": `${masterTimelineHeight}px`,
+        } as React.CSSProperties
+      }
+    >
       <header className="videoEditorHeader">
         <div className="videoProjectIdentity">
-          <button className="libraryButton" title="Project library" onClick={onOpenLibrary}><I.LayoutGrid /></button>
+          <button
+            className="libraryButton"
+            title="Project library"
+            onClick={onOpenLibrary}
+          >
+            <I.LayoutGrid />
+          </button>
           <I.Clapperboard />
           <div>
             <b>{videoProject.name}</b>
@@ -1235,10 +1944,33 @@ function PopulatedVideoEditorWorkspace({
           </div>
         </div>
         <div className="actions">
+          <button
+            title="Composition Settings"
+            onClick={() => {
+              const seconds = window.prompt(
+                "Composition duration (seconds)",
+                String(
+                  videoProject.canvas.durationInFrames /
+                    videoProject.canvas.fps,
+                ),
+              );
+              if (seconds !== null && Number(seconds) > 0)
+                setCompositionDuration(
+                  Number(seconds) * videoProject.canvas.fps,
+                );
+            }}
+          >
+            <I.Settings2 /> Composition Settings
+          </button>
           <button onClick={onOpenScene}>
             <I.SquarePen /> Open Scene Editor
           </button>
-          <button onClick={() => { onPlay(false); setMasterExporting(true); }}>
+          <button
+            onClick={() => {
+              onPlay(false);
+              setMasterExporting(true);
+            }}
+          >
             <I.Download /> Export Full Video
           </button>
           <button className="primary" onClick={onSave}>
@@ -1248,72 +1980,309 @@ function PopulatedVideoEditorWorkspace({
       </header>
       <section className="videoEditorBody">
         <aside className="sceneBin masterLibrarySidebar">
-          <div className="masterPanelTitle"><b>Library</b><button title="Project library" onClick={onOpenLibrary}><I.FolderOpen /></button></div>
-          <div className="masterLibraryTabs">
-            <button className={masterLibraryTab === "scenes" ? "active" : ""} onClick={() => setMasterLibraryTab("scenes")}><I.Clapperboard /><span>Scenes</span></button>
-            <button className={masterLibraryTab === "assets" ? "active" : ""} onClick={() => setMasterLibraryTab("assets")}><I.Files /><span>Assets</span></button>
-            <button className={masterLibraryTab === "templates" ? "active" : ""} onClick={() => setMasterLibraryTab("templates")}><I.LayoutTemplate /><span>Templates</span></button>
+          <div className="masterPanelTitle">
+            <b>Library</b>
+            <button title="Project library" onClick={onOpenLibrary}>
+              <I.FolderOpen />
+            </button>
           </div>
-          {masterLibraryTab === "scenes" && <><div className="masterLibrarySectionHead"><span>{scenes.length} compositions</span><button title="Add scene" onClick={onAddScene}><I.Plus /></button></div><div className="sceneCards">
-            {scenes.map((scene, index) => (
-              <button
-                key={scene.id}
-                className={`sceneCard ${scene.id === activeScene.id ? "active" : ""}`}
-                onClick={() => onSelectScene(scene.id)}
-                onDoubleClick={onOpenScene}
-              >
-                <div
-                  className={`sceneThumbnail ${bgClass(scene.composition.background.preset)}`}
-                  style={backgroundStyle(scene.composition, 0)}
-                >
-                  {scene.thumbnailDataUrl ||
-                  scene.composition.thumbnailDataUrl ? (
-                    <img
-                      src={
-                        scene.thumbnailDataUrl ??
-                        scene.composition.thumbnailDataUrl
-                      }
-                      alt=""
-                    />
-                  ) : (
-                    <I.Box />
-                  )}
-                  <span>{index + 1}</span>
-                </div>
-                <div className="sceneCardInfo">
-                  <b>{scene.name}</b>
-                  <small>
-                    {formatTimecode(
-                      scene.durationInFrames,
-                      scene.composition.canvas.fps,
-                    )}
-                  </small>
-                </div>
-                <I.ChevronRight />
-              </button>
-            ))}
-          </div><div className="sceneActions">
-            <button onClick={onDuplicateScene}>
-              <I.Copy /> Duplicate
+          <div className="masterLibraryTabs">
+            <button
+              className={masterLibraryTab === "scenes" ? "active" : ""}
+              onClick={() => setMasterLibraryTab("scenes")}
+            >
+              <I.Clapperboard />
+              <span>Scenes</span>
             </button>
             <button
-              className="danger"
-              onClick={onDeleteScene}
+              className={masterLibraryTab === "assets" ? "active" : ""}
+              onClick={() => setMasterLibraryTab("assets")}
             >
-              <I.Trash2 /> Delete
+              <I.Files />
+              <span>Assets</span>
             </button>
-          </div></>}
-          {masterLibraryTab === "assets" && <div className="masterAssetList">
-            <div className="assetLibraryActions"><label title="Upload assets"><I.Upload /><span>Upload</span><input type="file" multiple accept="image/*,video/*,audio/*,.glb,model/gltf-binary" onChange={(event) => void uploadLibraryAssets(event.target.files)} /></label><button title="New folder" onClick={async () => { const name = window.prompt("Folder name")?.trim(); if (name) { const folder = await createAssetFolder(name); await refreshAssetLibrary(); setAssetFolderId(folder.id); } }}><I.FolderPlus /></button><button title={assetView === "list" ? "Grid view" : "List view"} onClick={() => setAssetView((view) => view === "list" ? "grid" : "list")}>{assetView === "list" ? <I.Grid2X2 /> : <I.List />}</button></div>
-            <div className="assetSearch"><I.Search /><input placeholder="Search assets" value={assetSearch} onChange={(event) => setAssetSearch(event.target.value)} /></div>
-            <div className="assetFilters">{(["all", "image", "video", "audio", "model"] as const).map((filter) => <button key={filter} className={assetFilter === filter ? "active" : ""} onClick={() => setAssetFilter(filter)}>{filter}</button>)}</div>
-            <div className="assetFolders"><button className={assetFolderId === "all" ? "active" : ""} onClick={() => setAssetFolderId("all")}><I.Layers3 /> All assets <span>{libraryAssets.length}</span></button><button className={assetFolderId === "root" ? "active" : ""} onClick={() => setAssetFolderId("root")}><I.Folder /> Unfiled</button>{assetFolders.map((folder) => <div key={folder.id} className={assetFolderId === folder.id ? "active" : ""}><button onClick={() => setAssetFolderId(folder.id)}><I.Folder /> {folder.name}</button><button title="Rename folder" onClick={async () => { const name = window.prompt("Rename folder", folder.name)?.trim(); if (name) { await renameAssetFolder(folder.id, name); await refreshAssetLibrary(); } }}><I.Pencil /></button><button title="Delete folder" onClick={async () => { if (window.confirm(`Delete folder “${folder.name}”? Assets will move to Unfiled.`)) { await deleteAssetFolder(folder.id); setAssetFolderId("all"); await refreshAssetLibrary(); } }}><I.X /></button></div>)}</div>
-            {missingAssetIds.length > 0 && <div className="missingAssets"><I.TriangleAlert /><span>{missingAssetIds.length} referenced {missingAssetIds.length === 1 ? "file is" : "files are"} missing</span></div>}
-            <div className={`assetItems ${assetView}`}>{filteredLibraryAssets.map((asset) => <AssetLibraryItem key={asset.id} asset={asset} folders={assetFolders} referenced={referencedAssetIds.has(asset.id)} onRefresh={refreshAssetLibrary} />)}</div>
-            {!filteredLibraryAssets.length && <div className="masterPanelEmpty"><I.Files /><b>No matching assets</b><span>Upload images, videos, audio, or GLB models.</span></div>}
-          </div>}
-          {masterLibraryTab === "templates" && <div className="masterTemplateShelf"><div className="masterLibrarySectionHead"><span>Reusable scenes</span><button title="Open template library" onClick={onOpenLibrary}><I.Plus /></button></div>{masterSceneTemplates.map((template) => <button draggable key={template.id} onDragStart={(event) => { event.dataTransfer.effectAllowed = "copy"; event.dataTransfer.setData("application/x-renderlaunch-template", JSON.stringify({ templateId: template.id })); }}><div className={`templateShelfThumb ${bgClass(template.composition.background.preset)}`} style={backgroundStyle(template.composition, 0)}>{template.thumbnailDataUrl ? <img src={template.thumbnailDataUrl} alt="" /> : <I.LayoutTemplate />}</div><b>{template.name}</b><small>Drag to Scenes track</small></button>)}{scenes.map((scene) => <button draggable key={scene.id} onDragStart={(event) => { event.dataTransfer.effectAllowed = "copy"; event.dataTransfer.setData("application/x-renderlaunch-template", JSON.stringify({ sceneId: scene.id })); }} onDoubleClick={onOpenScene} onClick={() => onSelectScene(scene.id)}><div className={`templateShelfThumb ${bgClass(scene.composition.background.preset)}`} style={backgroundStyle(scene.composition, 0)}>{scene.thumbnailDataUrl || scene.composition.thumbnailDataUrl ? <img src={scene.thumbnailDataUrl ?? scene.composition.thumbnailDataUrl} alt="" /> : <I.LayoutTemplate />}</div><b>{scene.name}</b><small>Current composition</small></button>)}</div>}
-          <div className="masterPanelResize horizontal right" onPointerDown={(event) => resizeMasterPanel(event, "left")} />
+            <button
+              className={masterLibraryTab === "templates" ? "active" : ""}
+              onClick={() => setMasterLibraryTab("templates")}
+            >
+              <I.LayoutTemplate />
+              <span>Templates</span>
+            </button>
+          </div>
+          {masterLibraryTab === "scenes" && (
+            <>
+              <div className="masterLibrarySectionHead">
+                <span>{scenes.length} compositions</span>
+                <button title="Add scene" onClick={onAddScene}>
+                  <I.Plus />
+                </button>
+              </div>
+              <div className="sceneCards">
+                {scenes.map((scene, index) => (
+                  <button
+                    key={scene.id}
+                    className={`sceneCard ${scene.id === activeScene.id ? "active" : ""}`}
+                    onClick={() => onSelectScene(scene.id)}
+                    onDoubleClick={onOpenScene}
+                  >
+                    <div
+                      className={`sceneThumbnail ${bgClass(scene.composition.background.preset)}`}
+                      style={backgroundStyle(scene.composition, 0)}
+                    >
+                      {scene.thumbnailDataUrl ||
+                      scene.composition.thumbnailDataUrl ? (
+                        <img
+                          src={
+                            scene.thumbnailDataUrl ??
+                            scene.composition.thumbnailDataUrl
+                          }
+                          alt=""
+                        />
+                      ) : (
+                        <I.Box />
+                      )}
+                      <span>{index + 1}</span>
+                    </div>
+                    <div className="sceneCardInfo">
+                      <b>{scene.name}</b>
+                      <small>
+                        {formatTimecode(
+                          scene.durationInFrames,
+                          scene.composition.canvas.fps,
+                        )}
+                      </small>
+                    </div>
+                    <I.ChevronRight />
+                  </button>
+                ))}
+              </div>
+              <div className="sceneActions">
+                <button onClick={onDuplicateScene}>
+                  <I.Copy /> Duplicate
+                </button>
+                <button className="danger" onClick={onDeleteScene}>
+                  <I.Trash2 /> Delete
+                </button>
+              </div>
+            </>
+          )}
+          {masterLibraryTab === "assets" && (
+            <div className="masterAssetList">
+              <div className="assetLibraryActions">
+                <label title="Upload assets">
+                  <I.Upload />
+                  <span>Upload</span>
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*,video/*,audio/*,.glb,model/gltf-binary"
+                    onChange={(event) =>
+                      void uploadLibraryAssets(event.target.files)
+                    }
+                  />
+                </label>
+                <button
+                  title="New folder"
+                  onClick={async () => {
+                    const name = window.prompt("Folder name")?.trim();
+                    if (name) {
+                      const folder = await createAssetFolder(name);
+                      await refreshAssetLibrary();
+                      setAssetFolderId(folder.id);
+                    }
+                  }}
+                >
+                  <I.FolderPlus />
+                </button>
+                <button
+                  title={assetView === "list" ? "Grid view" : "List view"}
+                  onClick={() =>
+                    setAssetView((view) => (view === "list" ? "grid" : "list"))
+                  }
+                >
+                  {assetView === "list" ? <I.Grid2X2 /> : <I.List />}
+                </button>
+              </div>
+              <div className="assetSearch">
+                <I.Search />
+                <input
+                  placeholder="Search assets"
+                  value={assetSearch}
+                  onChange={(event) => setAssetSearch(event.target.value)}
+                />
+              </div>
+              <div className="assetFilters">
+                {(["all", "image", "video", "audio", "model"] as const).map(
+                  (filter) => (
+                    <button
+                      key={filter}
+                      className={assetFilter === filter ? "active" : ""}
+                      onClick={() => setAssetFilter(filter)}
+                    >
+                      {filter}
+                    </button>
+                  ),
+                )}
+              </div>
+              <div className="assetFolders">
+                <button
+                  className={assetFolderId === "all" ? "active" : ""}
+                  onClick={() => setAssetFolderId("all")}
+                >
+                  <I.Layers3 /> All assets <span>{libraryAssets.length}</span>
+                </button>
+                <button
+                  className={assetFolderId === "root" ? "active" : ""}
+                  onClick={() => setAssetFolderId("root")}
+                >
+                  <I.Folder /> Unfiled
+                </button>
+                {assetFolders.map((folder) => (
+                  <div
+                    key={folder.id}
+                    className={assetFolderId === folder.id ? "active" : ""}
+                  >
+                    <button onClick={() => setAssetFolderId(folder.id)}>
+                      <I.Folder /> {folder.name}
+                    </button>
+                    <button
+                      title="Rename folder"
+                      onClick={async () => {
+                        const name = window
+                          .prompt("Rename folder", folder.name)
+                          ?.trim();
+                        if (name) {
+                          await renameAssetFolder(folder.id, name);
+                          await refreshAssetLibrary();
+                        }
+                      }}
+                    >
+                      <I.Pencil />
+                    </button>
+                    <button
+                      title="Delete folder"
+                      onClick={async () => {
+                        if (
+                          window.confirm(
+                            `Delete folder “${folder.name}”? Assets will move to Unfiled.`,
+                          )
+                        ) {
+                          await deleteAssetFolder(folder.id);
+                          setAssetFolderId("all");
+                          await refreshAssetLibrary();
+                        }
+                      }}
+                    >
+                      <I.X />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {missingAssetIds.length > 0 && (
+                <div className="missingAssets">
+                  <I.TriangleAlert />
+                  <span>
+                    {missingAssetIds.length} referenced{" "}
+                    {missingAssetIds.length === 1 ? "file is" : "files are"}{" "}
+                    missing
+                  </span>
+                </div>
+              )}
+              <div className={`assetItems ${assetView}`}>
+                {filteredLibraryAssets.map((asset) => (
+                  <AssetLibraryItem
+                    key={asset.id}
+                    asset={asset}
+                    folders={assetFolders}
+                    referenced={referencedAssetIds.has(asset.id)}
+                    onRefresh={refreshAssetLibrary}
+                  />
+                ))}
+              </div>
+              {!filteredLibraryAssets.length && (
+                <div className="masterPanelEmpty">
+                  <I.Files />
+                  <b>No matching assets</b>
+                  <span>Upload images, videos, audio, or GLB models.</span>
+                </div>
+              )}
+            </div>
+          )}
+          {masterLibraryTab === "templates" && (
+            <div className="masterTemplateShelf">
+              <div className="masterLibrarySectionHead">
+                <span>Reusable scenes</span>
+                <button title="Open template library" onClick={onOpenLibrary}>
+                  <I.Plus />
+                </button>
+              </div>
+              {masterSceneTemplates.map((template) => (
+                <button
+                  draggable
+                  key={template.id}
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "copy";
+                    event.dataTransfer.setData(
+                      "application/x-renderlaunch-template",
+                      JSON.stringify({ templateId: template.id }),
+                    );
+                  }}
+                >
+                  <div
+                    className={`templateShelfThumb ${bgClass(template.composition.background.preset)}`}
+                    style={backgroundStyle(template.composition, 0)}
+                  >
+                    {template.thumbnailDataUrl ? (
+                      <img src={template.thumbnailDataUrl} alt="" />
+                    ) : (
+                      <I.LayoutTemplate />
+                    )}
+                  </div>
+                  <b>{template.name}</b>
+                  <small>Drag to Scenes track</small>
+                </button>
+              ))}
+              {scenes.map((scene) => (
+                <button
+                  draggable
+                  key={scene.id}
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "copy";
+                    event.dataTransfer.setData(
+                      "application/x-renderlaunch-template",
+                      JSON.stringify({ sceneId: scene.id }),
+                    );
+                  }}
+                  onDoubleClick={onOpenScene}
+                  onClick={() => onSelectScene(scene.id)}
+                >
+                  <div
+                    className={`templateShelfThumb ${bgClass(scene.composition.background.preset)}`}
+                    style={backgroundStyle(scene.composition, 0)}
+                  >
+                    {scene.thumbnailDataUrl ||
+                    scene.composition.thumbnailDataUrl ? (
+                      <img
+                        src={
+                          scene.thumbnailDataUrl ??
+                          scene.composition.thumbnailDataUrl
+                        }
+                        alt=""
+                      />
+                    ) : (
+                      <I.LayoutTemplate />
+                    )}
+                  </div>
+                  <b>{scene.name}</b>
+                  <small>Current composition</small>
+                </button>
+              ))}
+            </div>
+          )}
+          <div
+            className="masterPanelResize horizontal right"
+            onPointerDown={(event) => resizeMasterPanel(event, "left")}
+          />
         </aside>
         <section className="masterPreviewPanel">
           <div className="masterPreviewHead">
@@ -1322,8 +2291,12 @@ function PopulatedVideoEditorWorkspace({
               <h2>Launch Video · {activeScene.name}</h2>
             </div>
             <div className="masterPreviewActions">
-              <button title="Fit composition"><I.Maximize2 /> Fit</button>
-              <button title="Open scene editor" onClick={onOpenScene}><I.SquarePen /></button>
+              <button title="Fit composition">
+                <I.Maximize2 /> Fit
+              </button>
+              <button title="Open scene editor" onClick={onOpenScene}>
+                <I.SquarePen />
+              </button>
             </div>
           </div>
           <div
@@ -1334,7 +2307,13 @@ function PopulatedVideoEditorWorkspace({
                 : backgroundStyle(project, renderFrame)
             }
           >
-            <MasterPreviewCompositor playback={playback} videoProject={normalizedVideoProject} tracks={unifiedTimelineTracks} frame={shownMasterFrame} playing={playing} />
+            <MasterPreviewCompositor
+              playback={playback}
+              videoProject={normalizedVideoProject}
+              tracks={unifiedTimelineTracks}
+              frame={shownMasterFrame}
+              playing={playing}
+            />
           </div>
           <div className="masterPreviewControls">
             <button onClick={() => onPlay(!playing)}>
@@ -1355,41 +2334,674 @@ function PopulatedVideoEditorWorkspace({
             </b>
           </div>
         </section>
-        <aside ref={(node) => { if (node) node.scrollLeft = 0; }} className="masterInspectorPanel" onScroll={(event) => { if (event.currentTarget.scrollLeft) event.currentTarget.scrollLeft = 0; }}>
-          <div className="masterPanelResize horizontal left" onPointerDown={(event) => resizeMasterPanel(event, "right")} />
-          <div className="masterPanelTitle"><b>Inspector</b><I.SlidersHorizontal /></div>
-          {selectedTimelineIds.length > 1 ? <div className="masterInspectorContent">
-            <div className="inspectorSelection"><span className="blue"><I.MousePointer2 /></span><div><small>MULTIPLE CLIPS</small><b>{selectedTimelineIds.length} clips selected</b></div></div>
-            <section><h3>Shared timing</h3><div className="inspectorActions"><button onClick={() => updateSelectedTiming("shift", -5)}><I.ChevronLeft /> -5 frames</button><button onClick={() => updateSelectedTiming("shift", 5)}>+5 frames <I.ChevronRight /></button></div><label>Set duration<input type="number" min="1" placeholder="Frames" onChange={(event) => { if (event.target.value) updateSelectedTiming("duration", Number(event.target.value)); }} /></label><button className="wide" onClick={() => updateSelectedTiming("align", shownMasterFrame)}><I.AlignStartVertical /> Align starts to playhead</button></section>
-            <button className="inspectorDelete" onClick={deleteTimelineSelection}><I.Trash2 /> Delete selected clips</button>
-          </div> : selectedAssetClip ? <div className="masterInspectorContent">
-            <div className="inspectorSelection"><span className="violet">{selectedAssetClip.type === "video" ? <I.Film /> : <I.Image />}</span><div><small>{selectedAssetClip.type.toUpperCase()} CLIP</small><b>{selectedAssetClip.name}</b></div></div>
-            <section><h3>Timing</h3><div className="inspectorGrid"><label>Start<input type="number" min="0" value={selectedAssetClip.startFrame} onChange={(event) => updateTimelineAssetClip(selectedAssetClip.id, { startFrame: Number(event.target.value) })} /></label><label>Source in<input type="number" min="0" value={selectedAssetClip.sourceStartFrame} onChange={(event) => updateTimelineAssetClip(selectedAssetClip.id, { sourceStartFrame: Number(event.target.value) })} /></label><label>Duration<input type="number" min="1" value={selectedAssetClip.durationInFrames} onChange={(event) => updateTimelineAssetClip(selectedAssetClip.id, { durationInFrames: Number(event.target.value) })} /></label><label>End<input value={selectedAssetClip.startFrame + selectedAssetClip.durationInFrames} readOnly /></label></div></section>
-            <section><h3>Visual</h3><div className="inspectorGrid"><label>Position X<input type="number" min="0" max="100" value={selectedAssetClip.x} onChange={(event) => updateTimelineAssetClip(selectedAssetClip.id, { x: Number(event.target.value) })} /></label><label>Position Y<input type="number" min="0" max="100" value={selectedAssetClip.y} onChange={(event) => updateTimelineAssetClip(selectedAssetClip.id, { y: Number(event.target.value) })} /></label><label>Scale<input type="number" min=".05" max="10" step=".05" value={selectedAssetClip.scale} onChange={(event) => updateTimelineAssetClip(selectedAssetClip.id, { scale: Number(event.target.value) })} /></label><label>Opacity<input type="number" min="0" max="1" step=".05" value={selectedAssetClip.opacity} onChange={(event) => updateTimelineAssetClip(selectedAssetClip.id, { opacity: Number(event.target.value) })} /></label></div><label>Crop<select value={selectedAssetClip.crop} onChange={(event) => updateTimelineAssetClip(selectedAssetClip.id, { crop: event.target.value as "fit" | "fill" | "stretch" })}><option value="fit">Fit</option><option value="fill">Fill</option><option value="stretch">Stretch</option></select></label></section>
-            <section><h3>Actions</h3><div className="inspectorActions"><button onClick={() => duplicateTimelineAssetClip(selectedAssetClip.id)}><I.Copy /> Duplicate</button><button disabled={shownMasterFrame <= selectedAssetClip.startFrame || shownMasterFrame >= selectedAssetClip.startFrame + selectedAssetClip.durationInFrames} onClick={() => splitTimelineAssetClip(selectedAssetClip.id, shownMasterFrame)}><I.Scissors /> Split</button></div></section>
-            <button className="inspectorDelete" onClick={() => { deleteTimelineAssetClip(selectedAssetClip.id, rippleDelete); setSelectedAssetClipId(undefined); }}><I.Trash2 /> {rippleDelete ? "Ripple delete" : "Delete clip"}</button>
-          </div> : selectedOverlay ? <div className="masterInspectorContent">
-            <div className="inspectorSelection"><span className="violet"><I.Layers2 /></span><div><small>GLOBAL OVERLAY</small><b>{selectedOverlay.name}</b></div></div>
-            <section><h3>Content</h3>{selectedOverlay.type !== "logo" && selectedOverlay.type !== "watermark" ? <textarea value={selectedOverlay.content} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { content: event.target.value })} /> : <label className="masterFileField"><I.Upload /> {selectedOverlay.fileName ?? "Upload image"}<input type="file" accept="image/*" onChange={(event) => void uploadOverlayImage(selectedOverlay.id, event.target.files?.[0])} /></label>}</section>
-            <section><h3>Transform</h3><div className="inspectorGrid"><label>X<input type="number" value={selectedOverlay.x} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { x: clamp(Number(event.target.value), 0, 100) })} /></label><label>Y<input type="number" value={selectedOverlay.y} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { y: clamp(Number(event.target.value), 0, 100) })} /></label><label>Width<input type="number" value={selectedOverlay.width} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { width: clamp(Number(event.target.value), 5, 100) })} /></label><label>Opacity<input type="number" step=".05" value={selectedOverlay.opacity} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { opacity: clamp(Number(event.target.value), 0, 1) })} /></label></div></section>
-            <section><h3>Appearance</h3><div className="inspectorGrid"><label>Size<input type="number" value={selectedOverlay.fontSize} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { fontSize: clamp(Number(event.target.value), 8, 240) })} /></label><label>Color<input type="color" value={selectedOverlay.color} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { color: event.target.value })} /></label></div>{selectedOverlay.type !== "logo" && selectedOverlay.type !== "watermark" && <><label>Font<select value={selectedOverlay.fontFamily} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { fontFamily: event.target.value })}><option value="Inter, system-ui, sans-serif">Inter</option><option value="Arial, sans-serif">Arial</option><option value="Georgia, serif">Georgia</option><option value="'Courier New', monospace">Courier New</option></select></label><label>Animation<select value={selectedOverlay.animation} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { animation: event.target.value as GlobalOverlay["animation"] })}><option value="none">None</option><option value="fade">Fade in</option><option value="slide-up">Slide up</option><option value="typewriter">Typewriter</option></select></label></>}</section>
-            <button className="inspectorDelete" onClick={() => { deleteGlobalOverlay(selectedOverlay.id); setSelectedOverlayId(undefined); }}><I.Trash2 /> Delete overlay</button>
-          </div> : selectedClip && selectedAudio ? <div className="masterInspectorContent">
-            <div className="inspectorSelection"><span className="green"><I.AudioLines /></span><div><small>AUDIO CLIP</small><b>{selectedClip.fileName}</b></div></div>
-            <section><h3>Timing</h3><div className="inspectorGrid"><label>Start<input type="number" value={selectedClip.startFrame} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { startFrame: Math.max(0, Number(event.target.value)) })} /></label><label>Duration<input type="number" value={selectedClip.durationInFrames} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { durationInFrames: Math.max(1, Number(event.target.value)) })} /></label></div></section>
-            <section><h3>Audio</h3><div className="inspectorWaveform">{selectedClip.waveform.map((peak, index) => <i key={index} style={{ height: `${Math.max(4, peak * 100)}%` }} />)}</div><label className="inspectorRange">Volume<input type="range" min="0" max="2" step=".05" value={selectedClip.volume} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { volume: Number(event.target.value) })} /><span>{Math.round(selectedClip.volume * 100)}%</span></label><div className="inspectorGrid"><label>Fade in<input type="number" min="0" value={selectedClip.fadeInFrames} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { fadeInFrames: Math.max(0, Number(event.target.value)) })} /></label><label>Fade out<input type="number" min="0" value={selectedClip.fadeOutFrames} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { fadeOutFrames: Math.max(0, Number(event.target.value)) })} /></label></div></section>
-            <button onClick={() => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { muted: !selectedClip.muted })}>{selectedClip.muted ? <I.Volume2 /> : <I.VolumeX />} {selectedClip.muted ? "Unmute clip" : "Mute clip"}</button><button className="inspectorDelete" onClick={() => { deleteAudioClip(selectedAudio.trackId, selectedAudio.clipId); setSelectedAudio(undefined); }}><I.Trash2 /> Delete clip</button>
-          </div> : <div className="masterInspectorContent">
-            <div className="inspectorSelection"><span className="blue"><I.Clapperboard /></span><div><small>SCENE CLIP {activeIndex + 1}</small><b>{activeScene.name}</b></div></div>
-            <section><h3>Clip</h3><div className="inspectorGrid"><label>In<input value={activeScene.sourceStartFrame} readOnly /></label><label>Duration<input value={activeScene.durationInFrames} readOnly /></label></div><button className="wide" onClick={onOpenScene}><I.SquarePen /> Open scene editor</button></section>
-            <section><h3>Transition to next</h3><label>Style<select disabled={!nextScene} value={activeScene.transitionToNext.type} onChange={(event) => onSetTransition(activeScene.id, event.target.value as SceneTransitionType, activeScene.transitionToNext.durationInFrames)}><option value="cut">Cut</option><option value="crossfade">Crossfade</option><option value="fade-black">Fade through black</option><option value="slide">Slide</option><option value="zoom">Zoom</option><option value="blur">Blur dissolve</option></select></label><label>Duration (frames)<input type="number" min="1" max="90" disabled={!nextScene || activeScene.transitionToNext.type === "cut"} value={activeScene.transitionToNext.durationInFrames} onChange={(event) => onSetTransition(activeScene.id, activeScene.transitionToNext.type, Number(event.target.value))} /></label></section>
-            <section><h3>Actions</h3><div className="inspectorActions"><button onClick={onDuplicateScene}><I.Copy /> Duplicate</button><button onClick={onDeleteScene}><I.Trash2 /> Delete</button></div></section>
-          </div>}
+        <aside
+          ref={(node) => {
+            if (node) node.scrollLeft = 0;
+          }}
+          className="masterInspectorPanel"
+          onScroll={(event) => {
+            if (event.currentTarget.scrollLeft)
+              event.currentTarget.scrollLeft = 0;
+          }}
+        >
+          <div
+            className="masterPanelResize horizontal left"
+            onPointerDown={(event) => resizeMasterPanel(event, "right")}
+          />
+          <div className="masterPanelTitle">
+            <b>Inspector</b>
+            <I.SlidersHorizontal />
+          </div>
+          {selectedTimelineIds.length > 1 ? (
+            <div className="masterInspectorContent">
+              <div className="inspectorSelection">
+                <span className="blue">
+                  <I.MousePointer2 />
+                </span>
+                <div>
+                  <small>MULTIPLE CLIPS</small>
+                  <b>{selectedTimelineIds.length} clips selected</b>
+                </div>
+              </div>
+              <section>
+                <h3>Shared timing</h3>
+                <div className="inspectorActions">
+                  <button onClick={() => updateSelectedTiming("shift", -5)}>
+                    <I.ChevronLeft /> -5 frames
+                  </button>
+                  <button onClick={() => updateSelectedTiming("shift", 5)}>
+                    +5 frames <I.ChevronRight />
+                  </button>
+                </div>
+                <label>
+                  Set duration
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Frames"
+                    onChange={(event) => {
+                      if (event.target.value)
+                        updateSelectedTiming(
+                          "duration",
+                          Number(event.target.value),
+                        );
+                    }}
+                  />
+                </label>
+                <button
+                  className="wide"
+                  onClick={() =>
+                    updateSelectedTiming("align", shownMasterFrame)
+                  }
+                >
+                  <I.AlignStartVertical /> Align starts to playhead
+                </button>
+              </section>
+              <button
+                className="inspectorDelete"
+                onClick={deleteTimelineSelection}
+              >
+                <I.Trash2 /> Delete selected clips
+              </button>
+            </div>
+          ) : selectedAssetClip ? (
+            <div className="masterInspectorContent">
+              <div className="inspectorSelection">
+                <span className="violet">
+                  {selectedAssetClip.type === "video" ? (
+                    <I.Film />
+                  ) : (
+                    <I.Image />
+                  )}
+                </span>
+                <div>
+                  <small>{selectedAssetClip.type.toUpperCase()} CLIP</small>
+                  <b>{selectedAssetClip.name}</b>
+                </div>
+              </div>
+              <section>
+                <h3>Timing</h3>
+                <div className="inspectorGrid">
+                  <label>
+                    Start
+                    <input
+                      type="number"
+                      min="0"
+                      value={selectedAssetClip.startFrame}
+                      onChange={(event) =>
+                        updateTimelineAssetClip(selectedAssetClip.id, {
+                          startFrame: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Source in
+                    <input
+                      type="number"
+                      min="0"
+                      value={selectedAssetClip.sourceStartFrame}
+                      onChange={(event) =>
+                        updateTimelineAssetClip(selectedAssetClip.id, {
+                          sourceStartFrame: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Duration
+                    <input
+                      type="number"
+                      min="1"
+                      value={selectedAssetClip.durationInFrames}
+                      onChange={(event) =>
+                        updateTimelineAssetClip(selectedAssetClip.id, {
+                          durationInFrames: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    End
+                    <input
+                      value={
+                        selectedAssetClip.startFrame +
+                        selectedAssetClip.durationInFrames
+                      }
+                      readOnly
+                    />
+                  </label>
+                </div>
+              </section>
+              <section>
+                <h3>Visual</h3>
+                <div className="inspectorGrid">
+                  <label>
+                    Position X
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={selectedAssetClip.x}
+                      onChange={(event) =>
+                        updateTimelineAssetClip(selectedAssetClip.id, {
+                          x: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Position Y
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={selectedAssetClip.y}
+                      onChange={(event) =>
+                        updateTimelineAssetClip(selectedAssetClip.id, {
+                          y: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Scale
+                    <input
+                      type="number"
+                      min=".05"
+                      max="10"
+                      step=".05"
+                      value={selectedAssetClip.scale}
+                      onChange={(event) =>
+                        updateTimelineAssetClip(selectedAssetClip.id, {
+                          scale: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Opacity
+                    <input
+                      type="number"
+                      min="0"
+                      max="1"
+                      step=".05"
+                      value={selectedAssetClip.opacity}
+                      onChange={(event) =>
+                        updateTimelineAssetClip(selectedAssetClip.id, {
+                          opacity: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                </div>
+                <label>
+                  Crop
+                  <select
+                    value={selectedAssetClip.crop}
+                    onChange={(event) =>
+                      updateTimelineAssetClip(selectedAssetClip.id, {
+                        crop: event.target.value as "fit" | "fill" | "stretch",
+                      })
+                    }
+                  >
+                    <option value="fit">Fit</option>
+                    <option value="fill">Fill</option>
+                    <option value="stretch">Stretch</option>
+                  </select>
+                </label>
+              </section>
+              <section>
+                <h3>Actions</h3>
+                <div className="inspectorActions">
+                  <button
+                    onClick={() =>
+                      duplicateTimelineAssetClip(selectedAssetClip.id)
+                    }
+                  >
+                    <I.Copy /> Duplicate
+                  </button>
+                  <button
+                    disabled={
+                      shownMasterFrame <= selectedAssetClip.startFrame ||
+                      shownMasterFrame >=
+                        selectedAssetClip.startFrame +
+                          selectedAssetClip.durationInFrames
+                    }
+                    onClick={() =>
+                      splitTimelineAssetClip(
+                        selectedAssetClip.id,
+                        shownMasterFrame,
+                      )
+                    }
+                  >
+                    <I.Scissors /> Split
+                  </button>
+                </div>
+              </section>
+              <button
+                className="inspectorDelete"
+                onClick={() => {
+                  deleteTimelineAssetClip(selectedAssetClip.id, rippleDelete);
+                  setSelectedAssetClipId(undefined);
+                }}
+              >
+                <I.Trash2 /> {rippleDelete ? "Ripple delete" : "Delete clip"}
+              </button>
+            </div>
+          ) : selectedOverlay ? (
+            <div className="masterInspectorContent">
+              <div className="inspectorSelection">
+                <span className="violet">
+                  <I.Layers2 />
+                </span>
+                <div>
+                  <small>GLOBAL OVERLAY</small>
+                  <b>{selectedOverlay.name}</b>
+                </div>
+              </div>
+              <section>
+                <h3>Content</h3>
+                {selectedOverlay.type !== "logo" &&
+                selectedOverlay.type !== "watermark" ? (
+                  <textarea
+                    value={selectedOverlay.content}
+                    onChange={(event) =>
+                      updateGlobalOverlay(selectedOverlay.id, {
+                        content: event.target.value,
+                      })
+                    }
+                  />
+                ) : (
+                  <label className="masterFileField">
+                    <I.Upload /> {selectedOverlay.fileName ?? "Upload image"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) =>
+                        void uploadOverlayImage(
+                          selectedOverlay.id,
+                          event.target.files?.[0],
+                        )
+                      }
+                    />
+                  </label>
+                )}
+              </section>
+              <section>
+                <h3>Transform</h3>
+                <div className="inspectorGrid">
+                  <label>
+                    X
+                    <input
+                      type="number"
+                      value={selectedOverlay.x}
+                      onChange={(event) =>
+                        updateGlobalOverlay(selectedOverlay.id, {
+                          x: clamp(Number(event.target.value), 0, 100),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Y
+                    <input
+                      type="number"
+                      value={selectedOverlay.y}
+                      onChange={(event) =>
+                        updateGlobalOverlay(selectedOverlay.id, {
+                          y: clamp(Number(event.target.value), 0, 100),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Width
+                    <input
+                      type="number"
+                      value={selectedOverlay.width}
+                      onChange={(event) =>
+                        updateGlobalOverlay(selectedOverlay.id, {
+                          width: clamp(Number(event.target.value), 5, 100),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Opacity
+                    <input
+                      type="number"
+                      step=".05"
+                      value={selectedOverlay.opacity}
+                      onChange={(event) =>
+                        updateGlobalOverlay(selectedOverlay.id, {
+                          opacity: clamp(Number(event.target.value), 0, 1),
+                        })
+                      }
+                    />
+                  </label>
+                </div>
+              </section>
+              <section>
+                <h3>Appearance</h3>
+                <div className="inspectorGrid">
+                  <label>
+                    Size
+                    <input
+                      type="number"
+                      value={selectedOverlay.fontSize}
+                      onChange={(event) =>
+                        updateGlobalOverlay(selectedOverlay.id, {
+                          fontSize: clamp(Number(event.target.value), 8, 240),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Color
+                    <input
+                      type="color"
+                      value={selectedOverlay.color}
+                      onChange={(event) =>
+                        updateGlobalOverlay(selectedOverlay.id, {
+                          color: event.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                </div>
+                {selectedOverlay.type !== "logo" &&
+                  selectedOverlay.type !== "watermark" && (
+                    <>
+                      <label>
+                        Font
+                        <select
+                          value={selectedOverlay.fontFamily}
+                          onChange={(event) =>
+                            updateGlobalOverlay(selectedOverlay.id, {
+                              fontFamily: event.target.value,
+                            })
+                          }
+                        >
+                          <option value="Inter, system-ui, sans-serif">
+                            Inter
+                          </option>
+                          <option value="Arial, sans-serif">Arial</option>
+                          <option value="Georgia, serif">Georgia</option>
+                          <option value="'Courier New', monospace">
+                            Courier New
+                          </option>
+                        </select>
+                      </label>
+                      <label>
+                        Animation
+                        <select
+                          value={selectedOverlay.animation}
+                          onChange={(event) =>
+                            updateGlobalOverlay(selectedOverlay.id, {
+                              animation: event.target
+                                .value as GlobalOverlay["animation"],
+                            })
+                          }
+                        >
+                          <option value="none">None</option>
+                          <option value="fade">Fade in</option>
+                          <option value="slide-up">Slide up</option>
+                          <option value="typewriter">Typewriter</option>
+                        </select>
+                      </label>
+                    </>
+                  )}
+              </section>
+              <button
+                className="inspectorDelete"
+                onClick={() => {
+                  deleteGlobalOverlay(selectedOverlay.id);
+                  setSelectedOverlayId(undefined);
+                }}
+              >
+                <I.Trash2 /> Delete overlay
+              </button>
+            </div>
+          ) : selectedClip && selectedAudio ? (
+            <div className="masterInspectorContent">
+              <div className="inspectorSelection">
+                <span className="green">
+                  <I.AudioLines />
+                </span>
+                <div>
+                  <small>AUDIO CLIP</small>
+                  <b>{selectedClip.fileName}</b>
+                </div>
+              </div>
+              <section>
+                <h3>Timing</h3>
+                <div className="inspectorGrid">
+                  <label>
+                    Start
+                    <input
+                      type="number"
+                      value={selectedClip.startFrame}
+                      onChange={(event) =>
+                        updateAudioClip(
+                          selectedAudio.trackId,
+                          selectedAudio.clipId,
+                          {
+                            startFrame: Math.max(0, Number(event.target.value)),
+                          },
+                        )
+                      }
+                    />
+                  </label>
+                  <label>
+                    Duration
+                    <input
+                      type="number"
+                      value={selectedClip.durationInFrames}
+                      onChange={(event) =>
+                        updateAudioClip(
+                          selectedAudio.trackId,
+                          selectedAudio.clipId,
+                          {
+                            durationInFrames: Math.max(
+                              1,
+                              Number(event.target.value),
+                            ),
+                          },
+                        )
+                      }
+                    />
+                  </label>
+                </div>
+              </section>
+              <section>
+                <h3>Audio</h3>
+                <div className="inspectorWaveform">
+                  {selectedClip.waveform.map((peak, index) => (
+                    <i
+                      key={index}
+                      style={{ height: `${Math.max(4, peak * 100)}%` }}
+                    />
+                  ))}
+                </div>
+                <label className="inspectorRange">
+                  Volume
+                  <input
+                    type="range"
+                    min="0"
+                    max="2"
+                    step=".05"
+                    value={selectedClip.volume}
+                    onChange={(event) =>
+                      updateAudioClip(
+                        selectedAudio.trackId,
+                        selectedAudio.clipId,
+                        { volume: Number(event.target.value) },
+                      )
+                    }
+                  />
+                  <span>{Math.round(selectedClip.volume * 100)}%</span>
+                </label>
+                <div className="inspectorGrid">
+                  <label>
+                    Fade in
+                    <input
+                      type="number"
+                      min="0"
+                      value={selectedClip.fadeInFrames}
+                      onChange={(event) =>
+                        updateAudioClip(
+                          selectedAudio.trackId,
+                          selectedAudio.clipId,
+                          {
+                            fadeInFrames: Math.max(
+                              0,
+                              Number(event.target.value),
+                            ),
+                          },
+                        )
+                      }
+                    />
+                  </label>
+                  <label>
+                    Fade out
+                    <input
+                      type="number"
+                      min="0"
+                      value={selectedClip.fadeOutFrames}
+                      onChange={(event) =>
+                        updateAudioClip(
+                          selectedAudio.trackId,
+                          selectedAudio.clipId,
+                          {
+                            fadeOutFrames: Math.max(
+                              0,
+                              Number(event.target.value),
+                            ),
+                          },
+                        )
+                      }
+                    />
+                  </label>
+                </div>
+              </section>
+              <button
+                onClick={() =>
+                  updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, {
+                    muted: !selectedClip.muted,
+                  })
+                }
+              >
+                {selectedClip.muted ? <I.Volume2 /> : <I.VolumeX />}{" "}
+                {selectedClip.muted ? "Unmute clip" : "Mute clip"}
+              </button>
+              <button
+                className="inspectorDelete"
+                onClick={() => {
+                  deleteAudioClip(selectedAudio.trackId, selectedAudio.clipId);
+                  setSelectedAudio(undefined);
+                }}
+              >
+                <I.Trash2 /> Delete clip
+              </button>
+            </div>
+          ) : (
+            <div className="masterInspectorContent">
+              <div className="inspectorSelection">
+                <span className="blue">
+                  <I.Clapperboard />
+                </span>
+                <div>
+                  <small>SCENE CLIP {activeIndex + 1}</small>
+                  <b>{activeScene.name}</b>
+                </div>
+              </div>
+              <section>
+                <h3>Clip</h3>
+                <div className="inspectorGrid">
+                  <label>
+                    In
+                    <input value={activeScene.sourceStartFrame} readOnly />
+                  </label>
+                  <label>
+                    Duration
+                    <input value={activeScene.durationInFrames} readOnly />
+                  </label>
+                </div>
+                <button className="wide" onClick={onOpenScene}>
+                  <I.SquarePen /> Open scene editor
+                </button>
+              </section>
+              <section>
+                <h3>Transition to next</h3>
+                <label>
+                  Style
+                  <select
+                    disabled={!nextScene}
+                    value={activeScene.transitionToNext.type}
+                    onChange={(event) =>
+                      onSetTransition(
+                        activeScene.id,
+                        event.target.value as SceneTransitionType,
+                        activeScene.transitionToNext.durationInFrames,
+                      )
+                    }
+                  >
+                    <option value="cut">Cut</option>
+                    <option value="crossfade">Crossfade</option>
+                    <option value="fade-black">Fade through black</option>
+                    <option value="slide">Slide</option>
+                    <option value="zoom">Zoom</option>
+                    <option value="blur">Blur dissolve</option>
+                  </select>
+                </label>
+                <label>
+                  Duration (frames)
+                  <input
+                    type="number"
+                    min="1"
+                    max="90"
+                    disabled={
+                      !nextScene || activeScene.transitionToNext.type === "cut"
+                    }
+                    value={activeScene.transitionToNext.durationInFrames}
+                    onChange={(event) =>
+                      onSetTransition(
+                        activeScene.id,
+                        activeScene.transitionToNext.type,
+                        Number(event.target.value),
+                      )
+                    }
+                  />
+                </label>
+              </section>
+              <section>
+                <h3>Actions</h3>
+                <div className="inspectorActions">
+                  <button onClick={onDuplicateScene}>
+                    <I.Copy /> Duplicate
+                  </button>
+                  <button onClick={onDeleteScene}>
+                    <I.Trash2 /> Delete
+                  </button>
+                </div>
+              </section>
+            </div>
+          )}
         </aside>
       </section>
-      <section ref={masterTimelinePanelRef} className="masterTimelinePanel" onPointerDown={beginTimelineMarquee}>
-        {timelineMarquee && <div className="masterTimelineMarquee" style={timelineMarquee} />}
-        <div className="masterPanelResize vertical" onPointerDown={(event) => resizeMasterPanel(event, "timeline")} />
+      <section
+        ref={masterTimelinePanelRef}
+        className="masterTimelinePanel"
+        onPointerDown={beginTimelineMarquee}
+      >
+        {timelineMarquee && (
+          <div className="masterTimelineMarquee" style={timelineMarquee} />
+        )}
+        <div
+          className="masterPanelResize vertical"
+          onPointerDown={(event) => resizeMasterPanel(event, "timeline")}
+        />
         <div className="masterTimelineHead">
           <div>
             <b>Master Timeline</b>
@@ -1397,23 +3009,95 @@ function PopulatedVideoEditorWorkspace({
           </div>
           <div className="masterTimelineTools">
             <div className="overlayAddMenu">
-              {(["title", "caption", "cta", "logo", "watermark"] as GlobalOverlayType[]).map((type) => (
-                <button key={type} title={`Add ${type}`} onClick={() => addGlobalOverlay(type, shownMasterFrame)}>
-                  {type === "logo" || type === "watermark" ? <I.ImagePlus /> : <I.Type />} {type}
+              {(
+                [
+                  "title",
+                  "caption",
+                  "cta",
+                  "logo",
+                  "watermark",
+                ] as GlobalOverlayType[]
+              ).map((type) => (
+                <button
+                  key={type}
+                  title={`Add ${type}`}
+                  onClick={() => addGlobalOverlay(type, shownMasterFrame)}
+                >
+                  {type === "logo" || type === "watermark" ? (
+                    <I.ImagePlus />
+                  ) : (
+                    <I.Type />
+                  )}{" "}
+                  {type}
                 </button>
               ))}
             </div>
             <button
               title="Split selected clip at playhead (S)"
               disabled={
-                selectedAssetClip ? shownMasterFrame <= selectedAssetClip.startFrame || shownMasterFrame >= selectedAssetClip.startFrame + selectedAssetClip.durationInFrames : visibleFrame <= 0 || visibleFrame >= activeScene.durationInFrames
+                selectedAssetClip
+                  ? shownMasterFrame <= selectedAssetClip.startFrame ||
+                    shownMasterFrame >=
+                      selectedAssetClip.startFrame +
+                        selectedAssetClip.durationInFrames
+                  : visibleFrame <= 0 ||
+                    visibleFrame >= activeScene.durationInFrames
               }
-              onClick={() => selectedAssetClip ? splitTimelineAssetClip(selectedAssetClip.id, shownMasterFrame) : onSplitScene(activeScene.id, visibleFrame)}
+              onClick={() =>
+                selectedAssetClip
+                  ? splitTimelineAssetClip(
+                      selectedAssetClip.id,
+                      shownMasterFrame,
+                    )
+                  : onSplitScene(activeScene.id, visibleFrame)
+              }
             >
               <I.Scissors /> Split
             </button>
-            <button className={rippleDelete ? "active" : ""} title="Close the gap after deleting a media clip" onClick={() => setRippleDelete((value) => !value)}><I.MoveLeft /> Ripple</button>
-            <button title="Delete selected clips" disabled={!selectedTimelineIds.length} onClick={deleteTimelineSelection}><I.Trash2 /> {selectedTimelineIds.length || "Delete"}</button>
+            <button
+              className={rippleDelete ? "active" : ""}
+              title="Close the gap after deleting a media clip"
+              onClick={() => setRippleDelete((value) => !value)}
+            >
+              <I.MoveLeft /> Ripple
+            </button>
+            <button
+              title="Set work-area start"
+              onClick={() => setWorkArea({ startFrame: shownMasterFrame })}
+            >
+              Work start
+            </button>
+            <button
+              title="Set work-area end"
+              onClick={() =>
+                setWorkArea({
+                  endFrame: Math.min(totalFrames, shownMasterFrame + 1),
+                })
+              }
+            >
+              Work end
+            </button>
+            <button
+              className={videoProject.workArea.enabled ? "active" : ""}
+              onClick={() =>
+                setWorkArea({ enabled: !videoProject.workArea.enabled })
+              }
+            >
+              Work area
+            </button>
+            <button
+              title="Fit composition to content"
+              onClick={fitCompositionToContent}
+            >
+              <I.Maximize2 /> Fit content
+            </button>
+            <button
+              title="Delete selected clips"
+              disabled={!selectedTimelineIds.length}
+              onClick={deleteTimelineSelection}
+            >
+              <I.Trash2 /> {selectedTimelineIds.length || "Delete"}
+            </button>
             <button
               onClick={() =>
                 setMasterZoom((value) => Math.max(1, value - 0.25))
@@ -1432,7 +3116,7 @@ function PopulatedVideoEditorWorkspace({
             />
             <button
               onClick={() =>
-                setMasterZoom((value) => Math.min(4, value + 0.25))
+                setMasterZoom((value) => Math.min(32, value + 0.25))
               }
             >
               <I.Plus />
@@ -1443,7 +3127,38 @@ function PopulatedVideoEditorWorkspace({
             </span>
           </div>
         </div>
-        <div className={`masterTimelineViewport timelineDropZone ${dragTargetTrack === "master-scenes" ? "compatibleDrop" : ""}`} onDragOver={(event) => { if (event.dataTransfer.types.includes("application/x-renderlaunch-template")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; setDragTargetTrack("master-scenes"); } }} onDragLeave={() => setDragTargetTrack(undefined)} onDrop={dropSceneTemplate}>
+        <div
+          className={`masterTimelineViewport timelineDropZone ${dragTargetTrack === "master-scenes" ? "compatibleDrop" : ""}`}
+          onDragOver={(event) => {
+            if (
+              event.dataTransfer.types.includes(
+                "application/x-renderlaunch-template",
+              )
+            ) {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "copy";
+              setDragTargetTrack("master-scenes");
+            }
+          }}
+          onDragLeave={() => setDragTargetTrack(undefined)}
+          onDrop={dropSceneTemplate}
+        >
+          <div
+            className={`masterWorkArea ${videoProject.workArea.enabled ? "enabled" : ""}`}
+            style={{
+              left: `${(videoProject.workArea.startFrame / totalFrames) * 100}%`,
+              width: `${((videoProject.workArea.endFrame - videoProject.workArea.startFrame) / totalFrames) * 100}%`,
+            }}
+          >
+            <i
+              title="Work-area start"
+              onPointerDown={(event) => beginWorkAreaEdit(event, "start")}
+            />
+            <i
+              title="Work-area end"
+              onPointerDown={(event) => beginWorkAreaEdit(event, "end")}
+            />
+          </div>
           <div
             className="masterTimeline dropTimelineContent"
             style={{ width: `${masterZoom * 100}%` }}
@@ -1483,7 +3198,10 @@ function PopulatedVideoEditorWorkspace({
                   }}
                   onPointerDown={(event) => {
                     if ((event.target as HTMLElement).closest("button")) return;
-                    setSelectedTimelineIds([]); setSelectedAssetClipId(undefined); setSelectedAudio(undefined); setSelectedOverlayId(undefined);
+                    setSelectedTimelineIds([]);
+                    setSelectedAssetClipId(undefined);
+                    setSelectedAudio(undefined);
+                    setSelectedOverlayId(undefined);
                     const rect = event.currentTarget.getBoundingClientRect();
                     const sceneStart = timeline.starts[index] ?? 0;
                     onMasterFrame(
@@ -1541,11 +3259,91 @@ function PopulatedVideoEditorWorkspace({
             })}
           </div>
         </div>
-        <MasterAssetTimelineRow track={masterVideoTrack} totalFrames={totalFrames} zoom={masterZoom} playhead={shownMasterFrame} selectedClipIds={selectedTimelineIds} activeSceneId={activeScene.id} dragActive={dragTargetTrack === videoTimelineTrack.id} onDragEnter={() => setDragTargetTrack(videoTimelineTrack.id)} onDragLeave={() => setDragTargetTrack(undefined)} onDrop={(event) => { if (event.dataTransfer.getData("application/x-renderlaunch-template")) dropSceneTemplate(event); else void dropLibraryAsset(event, "video"); }} onSceneSelect={(sceneId) => { setSelectedTimelineIds([]); setSelectedAssetClipId(undefined); setSelectedAudio(undefined); setSelectedOverlayId(undefined); onSelectScene(sceneId); }} onSelect={(id, additive) => { selectTimelineClip(`asset:${id}`, additive); setSelectedAssetClipId(id); setSelectedAudio(undefined); setSelectedOverlayId(undefined); }} onChange={updateTimelineAssetClip} onDelete={(id) => { deleteTimelineAssetClip(id, rippleDelete); setSelectedTimelineIds((items) => items.filter((item) => item !== `asset:${id}`)); if (id === selectedAssetClipId) setSelectedAssetClipId(undefined); }} />
-        <MasterAssetTimelineRow track={imageTimelineTrack} totalFrames={totalFrames} zoom={masterZoom} playhead={shownMasterFrame} selectedClipIds={selectedTimelineIds} dragActive={dragTargetTrack === imageTimelineTrack.id} onDragEnter={() => setDragTargetTrack(imageTimelineTrack.id)} onDragLeave={() => setDragTargetTrack(undefined)} onDrop={(event) => void dropLibraryAsset(event, "image")} onSelect={(id, additive) => { selectTimelineClip(`asset:${id}`, additive); setSelectedAssetClipId(id); setSelectedAudio(undefined); setSelectedOverlayId(undefined); }} onChange={updateTimelineAssetClip} onDelete={(id) => { deleteTimelineAssetClip(id, rippleDelete); setSelectedTimelineIds((items) => items.filter((item) => item !== `asset:${id}`)); if (id === selectedAssetClipId) setSelectedAssetClipId(undefined); }} />
+        <MasterAssetTimelineRow
+          track={masterVideoTrack}
+          totalFrames={totalFrames}
+          zoom={masterZoom}
+          playhead={shownMasterFrame}
+          selectedClipIds={selectedTimelineIds}
+          activeSceneId={activeScene.id}
+          dragActive={dragTargetTrack === videoTimelineTrack.id}
+          onDragEnter={() => setDragTargetTrack(videoTimelineTrack.id)}
+          onDragLeave={() => setDragTargetTrack(undefined)}
+          onDrop={(event) => {
+            if (
+              event.dataTransfer.getData("application/x-renderlaunch-template")
+            )
+              dropSceneTemplate(event);
+            else void dropLibraryAsset(event, "video");
+          }}
+          onSceneSelect={(sceneId) => {
+            setSelectedTimelineIds([]);
+            setSelectedAssetClipId(undefined);
+            setSelectedAudio(undefined);
+            setSelectedOverlayId(undefined);
+            onSelectScene(sceneId);
+          }}
+          onSelect={(id, additive) => {
+            selectTimelineClip(`asset:${id}`, additive);
+            setSelectedAssetClipId(id);
+            setSelectedAudio(undefined);
+            setSelectedOverlayId(undefined);
+          }}
+          onChange={updateTimelineAssetClip}
+          onDelete={(id) => {
+            deleteTimelineAssetClip(id, rippleDelete);
+            setSelectedTimelineIds((items) =>
+              items.filter((item) => item !== `asset:${id}`),
+            );
+            if (id === selectedAssetClipId) setSelectedAssetClipId(undefined);
+          }}
+        />
+        <MasterAssetTimelineRow
+          track={imageTimelineTrack}
+          totalFrames={totalFrames}
+          zoom={masterZoom}
+          playhead={shownMasterFrame}
+          selectedClipIds={selectedTimelineIds}
+          dragActive={dragTargetTrack === imageTimelineTrack.id}
+          onDragEnter={() => setDragTargetTrack(imageTimelineTrack.id)}
+          onDragLeave={() => setDragTargetTrack(undefined)}
+          onDrop={(event) => void dropLibraryAsset(event, "image")}
+          onSelect={(id, additive) => {
+            selectTimelineClip(`asset:${id}`, additive);
+            setSelectedAssetClipId(id);
+            setSelectedAudio(undefined);
+            setSelectedOverlayId(undefined);
+          }}
+          onChange={updateTimelineAssetClip}
+          onDelete={(id) => {
+            deleteTimelineAssetClip(id, rippleDelete);
+            setSelectedTimelineIds((items) =>
+              items.filter((item) => item !== `asset:${id}`),
+            );
+            if (id === selectedAssetClipId) setSelectedAssetClipId(undefined);
+          }}
+        />
         <div className="audioTimeline">
           {videoProject.audioTracks.map((track) => (
-            <div className={`audioTrack timelineDropZone ${dragTargetTrack === `master-audio:${track.id}` ? "compatibleDrop" : ""}`} key={track.id} onDragOver={(event) => { if (event.dataTransfer.types.includes("application/x-renderlaunch-asset")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; setDragTargetTrack(`master-audio:${track.id}`); } }} onDragLeave={() => setDragTargetTrack(undefined)} onDrop={(event) => void dropLibraryAsset(event, "audio", track.id)}>
+            <div
+              className={`audioTrack timelineDropZone ${dragTargetTrack === `master-audio:${track.id}` ? "compatibleDrop" : ""}`}
+              key={track.id}
+              onDragOver={(event) => {
+                if (
+                  event.dataTransfer.types.includes(
+                    "application/x-renderlaunch-asset",
+                  )
+                ) {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "copy";
+                  setDragTargetTrack(`master-audio:${track.id}`);
+                }
+              }}
+              onDragLeave={() => setDragTargetTrack(undefined)}
+              onDrop={(event) =>
+                void dropLibraryAsset(event, "audio", track.id)
+              }
+            >
               <div className="audioTrackControls">
                 <I.Music />
                 <b>{track.name}</b>
@@ -1562,219 +3360,1973 @@ function PopulatedVideoEditorWorkspace({
                   max="2"
                   step=".05"
                   value={track.volume}
-                  onChange={(event) => setAudioTrackVolume(track.id, Number(event.target.value))}
+                  onChange={(event) =>
+                    setAudioTrackVolume(track.id, Number(event.target.value))
+                  }
                 />
                 <label className="audioUpload" title={`Add ${track.name}`}>
                   <I.Plus />
-                  <input type="file" accept="audio/*" onChange={(event) => void uploadAudio(track.id, event.target.files?.[0])} />
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    onChange={(event) =>
+                      void uploadAudio(track.id, event.target.files?.[0])
+                    }
+                  />
                 </label>
               </div>
               <div className="audioTrackLane">
-                <div className="audioTrackContent dropTimelineContent" style={{ width: `${masterZoom * 100}%` }}>
+                <div
+                  className="audioTrackContent dropTimelineContent"
+                  style={{ width: `${masterZoom * 100}%` }}
+                >
                   {track.clips.map((clip) => (
                     <AudioTimelineClip
                       key={clip.id}
                       clip={clip}
                       totalFrames={totalFrames}
                       timelineId={`audio:${track.id}:${clip.id}`}
-                      selected={selectedTimelineIds.includes(`audio:${track.id}:${clip.id}`)}
-                      onSelect={(additive) => { selectTimelineClip(`audio:${track.id}:${clip.id}`, additive); setSelectedAudio({ trackId: track.id, clipId: clip.id }); setSelectedAssetClipId(undefined); setSelectedOverlayId(undefined); }}
-                      onChange={(patch) => updateAudioClip(track.id, clip.id, patch)}
+                      selected={selectedTimelineIds.includes(
+                        `audio:${track.id}:${clip.id}`,
+                      )}
+                      onSelect={(additive) => {
+                        selectTimelineClip(
+                          `audio:${track.id}:${clip.id}`,
+                          additive,
+                        );
+                        setSelectedAudio({
+                          trackId: track.id,
+                          clipId: clip.id,
+                        });
+                        setSelectedAssetClipId(undefined);
+                        setSelectedOverlayId(undefined);
+                      }}
+                      onChange={(patch) =>
+                        updateAudioClip(track.id, clip.id, patch)
+                      }
                     />
                   ))}
-                  <div className="masterPlayhead" style={{ left: `${(shownMasterFrame / Math.max(1, totalFrames)) * 100}%` }} />
+                  <div
+                    className="masterPlayhead"
+                    style={{
+                      left: `${(shownMasterFrame / Math.max(1, totalFrames)) * 100}%`,
+                    }}
+                  />
                 </div>
               </div>
             </div>
           ))}
         </div>
         <div className="overlayTrack">
-          <div className="overlayTrackLabel"><I.Layers2 /><b>Global overlays</b></div>
+          <div className="overlayTrackLabel">
+            <I.Layers2 />
+            <b>Global overlays</b>
+          </div>
           <div className="overlayTrackLane">
-            <div className="overlayTrackContent" style={{ width: `${masterZoom * 100}%` }}>
+            <div
+              className="overlayTrackContent"
+              style={{ width: `${masterZoom * 100}%` }}
+            >
               {videoProject.globalOverlays.map((overlay) => (
                 <OverlayTimelineClip
                   key={overlay.id}
                   overlay={overlay}
                   totalFrames={totalFrames}
-                  selected={selectedTimelineIds.includes(`overlay:${overlay.id}`)}
-                  onSelect={(additive) => { selectTimelineClip(`overlay:${overlay.id}`, additive); setSelectedOverlayId(overlay.id); setSelectedAudio(undefined); setSelectedAssetClipId(undefined); }}
+                  selected={selectedTimelineIds.includes(
+                    `overlay:${overlay.id}`,
+                  )}
+                  onSelect={(additive) => {
+                    selectTimelineClip(`overlay:${overlay.id}`, additive);
+                    setSelectedOverlayId(overlay.id);
+                    setSelectedAudio(undefined);
+                    setSelectedAssetClipId(undefined);
+                  }}
                   onChange={(patch) => updateGlobalOverlay(overlay.id, patch)}
                 />
               ))}
-              <div className="masterPlayhead" style={{ left: `${(shownMasterFrame / Math.max(1, totalFrames)) * 100}%` }} />
+              <div
+                className="masterPlayhead"
+                style={{
+                  left: `${(shownMasterFrame / Math.max(1, totalFrames)) * 100}%`,
+                }}
+              />
             </div>
           </div>
         </div>
         {selectedOverlay && (
           <div className="overlayInspector">
             <b>{selectedOverlay.name}</b>
-            {!(["logo", "watermark"] as GlobalOverlayType[]).includes(selectedOverlay.type) && <input aria-label="Overlay text" value={selectedOverlay.content} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { content: event.target.value })} />}
-            {(selectedOverlay.type === "logo" || selectedOverlay.type === "watermark") && <label className="overlayImageUpload"><I.Upload /> {selectedOverlay.fileName ?? "Upload image"}<input type="file" accept="image/*" onChange={(event) => void uploadOverlayImage(selectedOverlay.id, event.target.files?.[0])} /></label>}
-            <label>X <input type="number" min="0" max="100" value={selectedOverlay.x} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { x: clamp(Number(event.target.value), 0, 100) })} /></label>
-            <label>Y <input type="number" min="0" max="100" value={selectedOverlay.y} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { y: clamp(Number(event.target.value), 0, 100) })} /></label>
-            <label>Width <input type="number" min="5" max="100" value={selectedOverlay.width} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { width: clamp(Number(event.target.value), 5, 100) })} /></label>
-            <label>Opacity <input type="range" min="0" max="1" step=".05" value={selectedOverlay.opacity} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { opacity: Number(event.target.value) })} /></label>
-            {!(["logo", "watermark"] as GlobalOverlayType[]).includes(selectedOverlay.type) && <><label>Size <input type="number" min="8" max="240" value={selectedOverlay.fontSize} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { fontSize: clamp(Number(event.target.value), 8, 240) })} /></label><input aria-label="Overlay color" type="color" value={selectedOverlay.color} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { color: event.target.value })} /></>}
-            <button className="danger" onClick={() => { deleteGlobalOverlay(selectedOverlay.id); setSelectedOverlayId(undefined); }}><I.Trash2 /> Delete</button>
+            {!(["logo", "watermark"] as GlobalOverlayType[]).includes(
+              selectedOverlay.type,
+            ) && (
+              <input
+                aria-label="Overlay text"
+                value={selectedOverlay.content}
+                onChange={(event) =>
+                  updateGlobalOverlay(selectedOverlay.id, {
+                    content: event.target.value,
+                  })
+                }
+              />
+            )}
+            {(selectedOverlay.type === "logo" ||
+              selectedOverlay.type === "watermark") && (
+              <label className="overlayImageUpload">
+                <I.Upload /> {selectedOverlay.fileName ?? "Upload image"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) =>
+                    void uploadOverlayImage(
+                      selectedOverlay.id,
+                      event.target.files?.[0],
+                    )
+                  }
+                />
+              </label>
+            )}
+            <label>
+              X{" "}
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={selectedOverlay.x}
+                onChange={(event) =>
+                  updateGlobalOverlay(selectedOverlay.id, {
+                    x: clamp(Number(event.target.value), 0, 100),
+                  })
+                }
+              />
+            </label>
+            <label>
+              Y{" "}
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={selectedOverlay.y}
+                onChange={(event) =>
+                  updateGlobalOverlay(selectedOverlay.id, {
+                    y: clamp(Number(event.target.value), 0, 100),
+                  })
+                }
+              />
+            </label>
+            <label>
+              Width{" "}
+              <input
+                type="number"
+                min="5"
+                max="100"
+                value={selectedOverlay.width}
+                onChange={(event) =>
+                  updateGlobalOverlay(selectedOverlay.id, {
+                    width: clamp(Number(event.target.value), 5, 100),
+                  })
+                }
+              />
+            </label>
+            <label>
+              Opacity{" "}
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step=".05"
+                value={selectedOverlay.opacity}
+                onChange={(event) =>
+                  updateGlobalOverlay(selectedOverlay.id, {
+                    opacity: Number(event.target.value),
+                  })
+                }
+              />
+            </label>
+            {!(["logo", "watermark"] as GlobalOverlayType[]).includes(
+              selectedOverlay.type,
+            ) && (
+              <>
+                <label>
+                  Size{" "}
+                  <input
+                    type="number"
+                    min="8"
+                    max="240"
+                    value={selectedOverlay.fontSize}
+                    onChange={(event) =>
+                      updateGlobalOverlay(selectedOverlay.id, {
+                        fontSize: clamp(Number(event.target.value), 8, 240),
+                      })
+                    }
+                  />
+                </label>
+                <input
+                  aria-label="Overlay color"
+                  type="color"
+                  value={selectedOverlay.color}
+                  onChange={(event) =>
+                    updateGlobalOverlay(selectedOverlay.id, {
+                      color: event.target.value,
+                    })
+                  }
+                />
+              </>
+            )}
+            <button
+              className="danger"
+              onClick={() => {
+                deleteGlobalOverlay(selectedOverlay.id);
+                setSelectedOverlayId(undefined);
+              }}
+            >
+              <I.Trash2 /> Delete
+            </button>
           </div>
         )}
         {selectedClip && selectedAudio && (
           <div className="audioInspector">
             <b>{selectedClip.fileName}</b>
-            <label>Clip volume <input type="range" min="0" max="2" step=".05" value={selectedClip.volume} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { volume: Number(event.target.value) })} /></label>
-            <label>Fade in <input type="number" min="0" max={selectedClip.durationInFrames} value={selectedClip.fadeInFrames} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { fadeInFrames: Math.max(0, Number(event.target.value)) })} /></label>
-            <label>Fade out <input type="number" min="0" max={selectedClip.durationInFrames} value={selectedClip.fadeOutFrames} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { fadeOutFrames: Math.max(0, Number(event.target.value)) })} /></label>
-            <button onClick={() => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { muted: !selectedClip.muted })}>{selectedClip.muted ? <I.Volume2 /> : <I.VolumeX />} {selectedClip.muted ? "Unmute" : "Mute"}</button>
-            <button className="danger" onClick={() => { deleteAudioClip(selectedAudio.trackId, selectedAudio.clipId); setSelectedAudio(undefined); }}><I.Trash2 /> Delete</button>
+            <label>
+              Clip volume{" "}
+              <input
+                type="range"
+                min="0"
+                max="2"
+                step=".05"
+                value={selectedClip.volume}
+                onChange={(event) =>
+                  updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, {
+                    volume: Number(event.target.value),
+                  })
+                }
+              />
+            </label>
+            <label>
+              Fade in{" "}
+              <input
+                type="number"
+                min="0"
+                max={selectedClip.durationInFrames}
+                value={selectedClip.fadeInFrames}
+                onChange={(event) =>
+                  updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, {
+                    fadeInFrames: Math.max(0, Number(event.target.value)),
+                  })
+                }
+              />
+            </label>
+            <label>
+              Fade out{" "}
+              <input
+                type="number"
+                min="0"
+                max={selectedClip.durationInFrames}
+                value={selectedClip.fadeOutFrames}
+                onChange={(event) =>
+                  updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, {
+                    fadeOutFrames: Math.max(0, Number(event.target.value)),
+                  })
+                }
+              />
+            </label>
+            <button
+              onClick={() =>
+                updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, {
+                  muted: !selectedClip.muted,
+                })
+              }
+            >
+              {selectedClip.muted ? <I.Volume2 /> : <I.VolumeX />}{" "}
+              {selectedClip.muted ? "Unmute" : "Mute"}
+            </button>
+            <button
+              className="danger"
+              onClick={() => {
+                deleteAudioClip(selectedAudio.trackId, selectedAudio.clipId);
+                setSelectedAudio(undefined);
+              }}
+            >
+              <I.Trash2 /> Delete
+            </button>
           </div>
         )}
         {audioError && <small className="audioError">{audioError}</small>}
       </section>
-      {masterExporting && <MasterExportDialog videoProject={videoProject} onClose={() => setMasterExporting(false)} />}
+      {masterExporting && (
+        <MasterExportDialog
+          videoProject={videoProject}
+          onClose={() => setMasterExporting(false)}
+        />
+      )}
     </main>
   );
 }
 
-function VideoEditorWorkspace(props: Parameters<typeof PopulatedVideoEditorWorkspace>[0]) {
-  if (props.videoProject.scenes.length) return <PopulatedVideoEditorWorkspace {...props} />;
-  return <main className="emptyMasterWorkspace">
-    <header className="videoEditorHeader"><div className="videoProjectIdentity"><I.Clapperboard /><div><b>{props.videoProject.name}</b><small>Empty launch video</small></div></div><div className="actions"><button onClick={props.onOpenLibrary}><I.FolderOpen /> Template library</button><button className="primary" onClick={props.onSave}><I.Save /> Save project</button></div></header>
-    <section className="emptyMasterBody">
-      <div className="emptyMasterHero"><span><I.Sparkles /></span><small>START YOUR LAUNCH VIDEO</small><h1>Choose a template to begin.</h1><p>Templates become editable clips directly on the Video layer. There is no separate scene lane in the master editor.</p><div><button className="primary" onClick={props.onOpenLibrary}><I.LayoutTemplate /> Browse templates</button><button onClick={props.onAddScene}><I.Plus /> Blank composition</button></div></div>
-    </section>
-    <section className="emptyMasterTimeline"><div><b>Master Timeline</b><small>Templates and footage appear on the Video layer</small></div><div className="emptyTrack"><span><I.Film /> Video</span><button onClick={props.onOpenLibrary}><I.Plus /> Add template</button></div><div className="emptyTrack muted"><span><I.Image /> Images & graphics</span></div><div className="emptyTrack muted"><span><I.AudioLines /> Audio</span></div></section>
-  </main>;
+function VideoEditorWorkspace(
+  props: Parameters<typeof PopulatedVideoEditorWorkspace>[0],
+) {
+  const addTrack = useEditorStore((state) => state.addTimelineTrack),
+    updateTrack = useEditorStore((state) => state.updateTimelineTrack),
+    reorderTrack = useEditorStore((state) => state.reorderTimelineTrack),
+    duplicateTrack = useEditorStore((state) => state.duplicateTimelineTrack),
+    deleteTrack = useEditorStore((state) => state.deleteTimelineTrack),
+    undo = useEditorStore((state) => state.undo),
+    redo = useEditorStore((state) => state.redo),
+    setCompositionDuration = useEditorStore(
+      (state) => state.setCompositionDuration,
+    ),
+    setWorkArea = useEditorStore((state) => state.setWorkArea),
+    fitCompositionToContent = useEditorStore(
+      (state) => state.fitCompositionToContent,
+    ),
+    insertSceneFromTemplate = useEditorStore(
+      (state) => state.insertSceneFromTemplate,
+    ),
+    addTimelineAssetClip = useEditorStore(
+      (state) => state.addTimelineAssetClip,
+    ),
+    addAudioClip = useEditorStore((state) => state.addAudioClip),
+    updateAudioClip = useEditorStore((state) => state.updateAudioClip),
+    deleteAudioClip = useEditorStore((state) => state.deleteAudioClip),
+    updateTimelineAssetClip = useEditorStore(
+      (state) => state.updateTimelineAssetClip,
+    ),
+    deleteTimelineAssetClip = useEditorStore(
+      (state) => state.deleteTimelineAssetClip,
+    ),
+    duplicateTimelineAssetClip = useEditorStore(
+      (state) => state.duplicateTimelineAssetClip,
+    ),
+    splitTimelineAssetClip = useEditorStore(
+      (state) => state.splitTimelineAssetClip,
+    );
+  const [libraryTab, setLibraryTab] = useState<
+      "templates" | "media" | "text" | "models"
+    >("templates"),
+    [libraryTemplates, setLibraryTemplates] = useState<StoredSceneTemplate[]>(
+      [],
+    ),
+    [libraryMedia, setLibraryMedia] = useState<StoredAsset[]>([]),
+    [timelineZoom, setTimelineZoom] = useState(1),
+    [libraryError, setLibraryError] = useState(""),
+    [dropTarget, setDropTarget] = useState<string>(),
+    [selectedMasterClipId, setSelectedMasterClipId] = useState<string>();
+  const refreshMasterLibrary = async () => {
+    const [templates, media] = await Promise.all([
+      listSceneTemplates(),
+      listAssets(),
+    ]);
+    setLibraryTemplates(templates);
+    setLibraryMedia(media);
+  };
+  useEffect(() => {
+    void refreshMasterLibrary();
+  }, [props.videoProject.updatedAt]);
+  const tracks = buildUnifiedTimelineTracks(
+    props.videoProject.scenes,
+    props.videoProject.audioTracks,
+    props.videoProject.globalOverlays,
+    props.videoProject.timelineTracks,
+  ).sort((a, b) => a.order - b.order);
+  const totalFrames = sceneStarts(props.videoProject).totalFrames,
+    playback = resolveMasterFrame(props.videoProject, props.masterFrame),
+    hasContent = tracks.some(
+      (track) =>
+        track.type === "video" &&
+        track.clips.some(
+          (clip) =>
+            props.masterFrame >= clip.startFrame &&
+            props.masterFrame < clip.startFrame + clip.durationInFrames,
+        ),
+    );
+  const timelineWidth = `calc(330px + (100% - 330px) * ${timelineZoom})`,
+    timelinePosition = (frame: number) =>
+      `calc(330px + (100% - 330px) * ${(timelineZoom * frame) / totalFrames})`;
+  const selectedMasterClip = tracks
+    .flatMap((track) => track.clips)
+    .find((clip) => clip.id === selectedMasterClipId);
+  const selectedMasterTrack = tracks.find((track) =>
+    track.clips.some((clip) => clip.id === selectedMasterClipId),
+  );
+  const separatedAssetIds = new Set(
+    props.videoProject.audioTracks.flatMap((track) =>
+      track.clips.map((clip) => clip.assetId),
+    ),
+  );
+  const updateSelectedTimedClip = (
+    clip: TimelineClip,
+    patch: { startFrame?: number; durationInFrames?: number },
+  ) => {
+    if (clip.referenceType === "asset") updateTimelineAssetClip(clip.id, patch);
+    else if (
+      clip.referenceType === "audio-clip" &&
+      selectedMasterTrack?.id.startsWith("master-audio:")
+    )
+      updateAudioClip(
+        selectedMasterTrack.id.slice("master-audio:".length),
+        clip.referenceId,
+        patch,
+      );
+  };
+  const uploadLibraryMedia = async (files?: FileList | null) => {
+    if (!files?.length) return;
+    setLibraryError("");
+    try {
+      for (const file of Array.from(files)) await saveAsset(file);
+      await refreshMasterLibrary();
+      setLibraryTab("media");
+    } catch (error) {
+      setLibraryError(
+        error instanceof Error ? error.message : "Media upload failed.",
+      );
+    }
+  };
+  const addVisualMedia = async (
+    asset: StoredAsset,
+    kind: "image" | "video",
+    startFrame: number,
+    trackId?: string,
+  ) => {
+    const blob = await loadAssetBlob(asset.id),
+      duration =
+        kind === "video" && blob
+          ? await inspectMediaDurationFrames(
+              blob,
+              asset.type,
+              props.videoProject.canvas.fps,
+            )
+          : 150;
+    addTimelineAssetClip(
+      kind,
+      { id: asset.id, name: asset.name },
+      startFrame,
+      duration,
+      trackId,
+    );
+    if (kind === "video") {
+      const audioTrack = props.videoProject.audioTracks[0];
+      if (audioTrack)
+        addAudioClip(audioTrack.id, {
+          id: crypto.randomUUID(),
+          assetId: asset.id,
+          fileName: `${asset.name} · Audio`,
+          startFrame,
+          sourceStartFrame: 0,
+          durationInFrames: duration,
+          sourceDurationInFrames: duration,
+          volume: 1,
+          muted: false,
+          fadeInFrames: 0,
+          fadeOutFrames: 0,
+          waveform: [],
+        });
+      else
+        setLibraryError(
+          "The video was added, but no Audio track exists for its embedded sound. Add an Audio track and add the video again.",
+        );
+    }
+  };
+  const dropLibraryItem = async (
+    event: React.DragEvent<HTMLElement>,
+    track: TimelineTrack,
+  ) => {
+    event.preventDefault();
+    setDropTarget(undefined);
+    if (track.locked) {
+      setLibraryError(`${track.name} is locked.`);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect(),
+      startFrame = Math.max(
+        0,
+        Math.round(((event.clientX - rect.left) / rect.width) * totalFrames),
+      ),
+      templateData = event.dataTransfer.getData(
+        "application/x-renderlaunch-template",
+      ),
+      assetData = event.dataTransfer.getData(
+        "application/x-renderlaunch-asset",
+      );
+    if (templateData) {
+      if (track.type !== "video") {
+        setLibraryError("Template scenes can only be placed on Video tracks.");
+        return;
+      }
+      const { templateId } = JSON.parse(templateData) as { templateId: string },
+        template = libraryTemplates.find((item) => item.id === templateId);
+      if (template)
+        insertSceneFromTemplate(
+          template.composition,
+          props.videoProject.scenes.length,
+        );
+      return;
+    }
+    if (!assetData) return;
+    const payload = JSON.parse(assetData) as {
+        assetId: string;
+        kind: string;
+        name: string;
+      },
+      asset = libraryMedia.find((item) => item.id === payload.assetId);
+    if (!asset) return;
+    if (track.type === "audio") {
+      if (payload.kind !== "audio") {
+        setLibraryError(
+          `${payload.name} is visual media and cannot be placed on an Audio track.`,
+        );
+        return;
+      }
+      const audioTrackId = track.id.startsWith("master-audio:")
+          ? track.id.slice("master-audio:".length)
+          : undefined,
+        blob = await loadAssetBlob(asset.id);
+      if (!audioTrackId || !blob) {
+        setLibraryError("Add audio to an Audio track connected to the mixer.");
+        return;
+      }
+      const details = await inspectAudio(
+        new File([blob], asset.name, { type: asset.type }),
+        props.videoProject.canvas.fps,
+      );
+      addAudioClip(audioTrackId, {
+        id: crypto.randomUUID(),
+        assetId: asset.id,
+        fileName: asset.name,
+        startFrame,
+        sourceStartFrame: 0,
+        durationInFrames: details.durationInFrames,
+        sourceDurationInFrames: details.durationInFrames,
+        volume: 1,
+        muted: false,
+        fadeInFrames: 0,
+        fadeOutFrames: 0,
+        waveform: details.waveform,
+      });
+      return;
+    }
+    if (payload.kind === "audio") {
+      setLibraryError(
+        `${payload.name} is audio and cannot be placed on a Video track.`,
+      );
+      return;
+    }
+    if (payload.kind !== "image" && payload.kind !== "video") {
+      setLibraryError(`${payload.name} is not compatible with a Video track.`);
+      return;
+    }
+    await addVisualMedia(asset, payload.kind, startFrame, track.id);
+  };
+  return (
+    <main className="emptyMasterWorkspace">
+      <header className="videoEditorHeader">
+        <div className="videoProjectIdentity">
+          <I.Clapperboard />
+          <div>
+            <b>{props.videoProject.name}</b>
+            <small>
+              Blank composition ·{" "}
+              {formatTimecode(
+                props.videoProject.canvas.durationInFrames,
+                props.videoProject.canvas.fps,
+              )}
+            </small>
+          </div>
+        </div>
+        <div className="actions">
+          <button title="Undo" onClick={undo}>
+            <I.Undo2 />
+          </button>
+          <button title="Redo" onClick={redo}>
+            <I.Redo2 />
+          </button>
+          <button title="Go to start" onClick={() => props.onMasterFrame(0)}>
+            <I.SkipBack />
+          </button>
+          <button
+            title={props.playing ? "Pause" : "Play"}
+            onClick={() => props.onPlay(!props.playing)}
+          >
+            {props.playing ? <I.Pause /> : <I.Play />}
+          </button>
+          <button
+            title="Go to end"
+            onClick={() => props.onMasterFrame(totalFrames - 1)}
+          >
+            <I.SkipForward />
+          </button>
+          <button onClick={props.onOpenLibrary}>
+            <I.LayoutTemplate /> Templates
+          </button>
+          <button className="primary" onClick={props.onSave}>
+            <I.Save /> Save project
+          </button>
+        </div>
+      </header>
+      <aside className="simpleMasterLibrary">
+        <div className="simpleLibraryTabs">
+          {(["templates", "media", "text", "models"] as const).map((item) => (
+            <button
+              key={item}
+              className={libraryTab === item ? "active" : ""}
+              onClick={() => setLibraryTab(item)}
+            >
+              {item === "models"
+                ? "3D Models"
+                : item[0].toUpperCase() + item.slice(1)}
+            </button>
+          ))}
+        </div>
+        <div className="simpleLibrarySearch">
+          <I.Search /> Search library…
+        </div>
+        <label className="simpleMediaUpload">
+          <I.Upload /> Import media
+          <input
+            type="file"
+            multiple
+            accept="image/*,video/*,audio/*,.glb,model/gltf-binary"
+            onChange={(event) => void uploadLibraryMedia(event.target.files)}
+          />
+        </label>
+        {libraryError && (
+          <div className="simpleLibraryError">
+            <I.CircleAlert /> {libraryError}
+          </div>
+        )}
+        {libraryTab === "templates" && (
+          <div className="simpleLibraryGrid">
+            {libraryTemplates.map((template) => (
+              <button
+                key={template.id}
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = "copy";
+                  event.dataTransfer.setData(
+                    "application/x-renderlaunch-template",
+                    JSON.stringify({ templateId: template.id }),
+                  );
+                }}
+                onClick={() =>
+                  insertSceneFromTemplate(
+                    template.composition,
+                    props.videoProject.scenes.length,
+                  )
+                }
+              >
+                <span
+                  className={bgClass(template.composition.background.preset)}
+                >
+                  {template.thumbnailDataUrl ? (
+                    <img src={template.thumbnailDataUrl} alt="" />
+                  ) : (
+                    <I.LayoutTemplate />
+                  )}
+                </span>
+                <b>{template.name}</b>
+                <small>
+                  {formatTimecode(
+                    template.composition.canvas.durationInFrames,
+                    template.composition.canvas.fps,
+                  )}
+                </small>
+              </button>
+            ))}
+            {!libraryTemplates.length && <p>No templates saved yet.</p>}
+          </div>
+        )}
+        {libraryTab === "media" && (
+          <div className="simpleLibraryGrid">
+            {libraryMedia.map((asset) => (
+              <SimpleMasterMediaItem
+                key={asset.id}
+                asset={asset}
+                onAdd={() => {
+                  const kind = assetMediaKind(asset);
+                  if (kind === "image" || kind === "video")
+                    void addVisualMedia(asset, kind, props.masterFrame);
+                }}
+              />
+            ))}
+            {!libraryMedia.length && (
+              <p>Import image, video, or audio files to begin.</p>
+            )}
+          </div>
+        )}
+        {libraryTab === "text" && (
+          <div className="simpleLibraryEmpty">
+            <I.Type /> Text presets will be placed on Video tracks.
+          </div>
+        )}
+        {libraryTab === "models" && (
+          <div className="simpleLibraryEmpty">
+            <I.Box /> 3D model assets will appear here.
+          </div>
+        )}
+        <button className="simpleOpenLibrary" onClick={props.onOpenLibrary}>
+          <I.FolderOpen /> Manage library
+        </button>
+      </aside>
+      <aside className="simpleMasterInspector">
+        <div>
+          <b>Inspector</b>
+          <I.Menu />
+        </div>
+        {selectedMasterClip ? (
+          <section className="simpleClipInspector">
+            <small>{selectedMasterClip.type.toUpperCase()} CLIP</small>
+            <h3>{selectedMasterClip.name}</h3>
+            <label>
+              Start frame
+              <input
+                type="number"
+                min="0"
+                value={selectedMasterClip.startFrame}
+                disabled={
+                  !(["asset", "audio-clip"] as string[]).includes(
+                    selectedMasterClip.referenceType,
+                  )
+                }
+                onChange={(event) =>
+                  updateSelectedTimedClip(selectedMasterClip, {
+                    startFrame: Number(event.target.value),
+                  })
+                }
+              />
+            </label>
+            <label>
+              Duration
+              <input
+                type="number"
+                min="1"
+                value={selectedMasterClip.durationInFrames}
+                disabled={
+                  !(["asset", "audio-clip"] as string[]).includes(
+                    selectedMasterClip.referenceType,
+                  )
+                }
+                onChange={(event) =>
+                  updateSelectedTimedClip(selectedMasterClip, {
+                    durationInFrames: Number(event.target.value),
+                  })
+                }
+              />
+            </label>
+            <div>
+              <button
+                disabled={selectedMasterClip.referenceType !== "asset"}
+                onClick={() =>
+                  duplicateTimelineAssetClip(selectedMasterClip.id)
+                }
+              >
+                <I.Copy /> Duplicate
+              </button>
+              <button
+                disabled={
+                  selectedMasterClip.referenceType !== "asset" ||
+                  props.masterFrame <= selectedMasterClip.startFrame ||
+                  props.masterFrame >=
+                    selectedMasterClip.startFrame +
+                      selectedMasterClip.durationInFrames
+                }
+                onClick={() =>
+                  splitTimelineAssetClip(
+                    selectedMasterClip.id,
+                    props.masterFrame,
+                  )
+                }
+              >
+                <I.Scissors /> Split
+              </button>
+            </div>
+            {selectedMasterClip.type === "video" &&
+              selectedMasterClip.assetId && (
+                <button
+                  disabled={separatedAssetIds.has(selectedMasterClip.assetId)}
+                  onClick={() => {
+                    const audioTrack = props.videoProject.audioTracks[0];
+                    if (!audioTrack) {
+                      setLibraryError("Add an Audio track first.");
+                      return;
+                    }
+                    addAudioClip(audioTrack.id, {
+                      id: crypto.randomUUID(),
+                      assetId: selectedMasterClip.assetId!,
+                      fileName: `${selectedMasterClip.name} · Audio`,
+                      startFrame: selectedMasterClip.startFrame,
+                      sourceStartFrame: selectedMasterClip.sourceStartFrame,
+                      durationInFrames: selectedMasterClip.durationInFrames,
+                      sourceDurationInFrames:
+                        selectedMasterClip.sourceStartFrame +
+                        selectedMasterClip.durationInFrames,
+                      volume: 1,
+                      muted: false,
+                      fadeInFrames: 0,
+                      fadeOutFrames: 0,
+                      waveform: [],
+                    });
+                  }}
+                >
+                  {separatedAssetIds.has(selectedMasterClip.assetId) ? (
+                    <>
+                      <I.CircleCheck /> Audio separated
+                    </>
+                  ) : (
+                    <>
+                      <I.AudioLines /> Separate audio
+                    </>
+                  )}
+                </button>
+              )}
+            {selectedMasterClip.referenceType === "scene" && (
+              <button
+                onClick={() =>
+                  props.onSelectScene(selectedMasterClip.referenceId)
+                }
+              >
+                <I.SquarePen /> Open scene
+              </button>
+            )}
+            <button
+              className="danger"
+              disabled={
+                !(["asset", "audio-clip"] as string[]).includes(
+                  selectedMasterClip.referenceType,
+                )
+              }
+              onClick={() => {
+                if (selectedMasterClip.referenceType === "asset")
+                  deleteTimelineAssetClip(selectedMasterClip.id);
+                else if (
+                  selectedMasterClip.referenceType === "audio-clip" &&
+                  selectedMasterTrack?.id.startsWith("master-audio:")
+                )
+                  deleteAudioClip(
+                    selectedMasterTrack.id.slice("master-audio:".length),
+                    selectedMasterClip.referenceId,
+                  );
+                setSelectedMasterClipId(undefined);
+              }}
+            >
+              <I.Trash2 /> Delete clip
+            </button>
+          </section>
+        ) : (
+          <section>
+            <I.MousePointer2 />
+            <span>No selection</span>
+          </section>
+        )}
+      </aside>
+      <div className="blankCompositionTools">
+        <button
+          onClick={() => {
+            const seconds = window.prompt(
+              "Composition duration (seconds)",
+              String(
+                props.videoProject.canvas.durationInFrames /
+                  props.videoProject.canvas.fps,
+              ),
+            );
+            if (seconds !== null && Number(seconds) > 0)
+              setCompositionDuration(
+                Number(seconds) * props.videoProject.canvas.fps,
+              );
+          }}
+        >
+          <I.Settings2 /> Composition Settings
+        </button>
+        <button onClick={() => setWorkArea({ startFrame: props.masterFrame })}>
+          Set work-area start
+        </button>
+        <button
+          onClick={() =>
+            setWorkArea({
+              endFrame: Math.min(
+                props.videoProject.canvas.durationInFrames,
+                props.masterFrame + 1,
+              ),
+            })
+          }
+        >
+          Set work-area end
+        </button>
+        <button
+          className={props.videoProject.workArea.enabled ? "active" : ""}
+          onClick={() =>
+            setWorkArea({ enabled: !props.videoProject.workArea.enabled })
+          }
+        >
+          Use work area
+        </button>
+        <button onClick={fitCompositionToContent}>
+          <I.Maximize2 /> Fit composition to content
+        </button>
+      </div>
+      <section className="emptyMasterBody">
+        <div className="emptyComposition">
+          {hasContent ? (
+            <MasterPreviewCompositor
+              playback={playback}
+              videoProject={props.videoProject}
+              tracks={tracks}
+              frame={props.masterFrame}
+              playing={props.playing}
+            />
+          ) : (
+            <div>
+              <I.Clapperboard />
+              <p>Drag a template, video, image, or audio file to begin.</p>
+              <button onClick={props.onOpenLibrary}>
+                <I.LayoutTemplate /> Open Templates
+              </button>
+            </div>
+          )}
+        </div>
+      </section>
+      <section className="emptyMasterTimeline">
+        <div className="emptyTimelineHead">
+          <div className="timelinePrimaryTools">
+            <button onClick={() => addTrack("video")} title="Add video track">
+              <I.Plus />
+            </button>
+            <button title="Track list">
+              <I.List />
+            </button>
+            <button onClick={() => addTrack("audio")} title="Add audio track">
+              <I.FileMusic />
+            </button>
+            <button title="More">
+              <I.Ellipsis />
+            </button>
+          </div>
+          <span>
+            <button onClick={fitCompositionToContent}>
+              <I.Focus /> Fit content
+            </button>
+            <I.ZoomOut />
+            <input
+              aria-label="Timeline zoom"
+              type="range"
+              min="1"
+              max="12"
+              step=".25"
+              value={timelineZoom}
+              onChange={(event) => setTimelineZoom(Number(event.target.value))}
+            />
+            <I.ZoomIn />
+          </span>
+        </div>
+        <div className="emptyTrackScroller">
+          <div className="simpleTimelineRuler" style={{ width: timelineWidth }}>
+            <span />
+            {Array.from({ length: 13 }, (_, index) => (
+              <i
+                key={index}
+                style={{
+                  left: timelinePosition((index / 12) * totalFrames),
+                }}
+              >
+                {formatTimecode(
+                  (index / 12) * totalFrames,
+                  props.videoProject.canvas.fps,
+                )}
+              </i>
+            ))}
+            <a
+              style={{
+                left: timelinePosition(props.videoProject.workArea.startFrame),
+                width: `calc((100% - 330px) * ${(timelineZoom * (props.videoProject.workArea.endFrame - props.videoProject.workArea.startFrame)) / totalFrames})`,
+              }}
+            />
+            <b
+              style={{
+                left: timelinePosition(props.masterFrame),
+              }}
+            />
+          </div>
+          {tracks.map((track) => (
+            <div
+              className="emptyTrack"
+              key={track.id}
+              style={{ width: timelineWidth }}
+            >
+              <span>
+                <I.GripVertical className="trackGrip" />
+                {track.type === "audio" ? <I.AudioLines /> : <I.Film />}
+                <input
+                  aria-label="Track name"
+                  value={track.name}
+                  onChange={(event) =>
+                    updateTrack(track.id, { name: event.target.value })
+                  }
+                />
+              </span>
+              <div
+                className={`simpleTrackLane ${dropTarget === track.id ? "compatibleDrop" : ""} ${dropTarget === `invalid:${track.id}` ? "invalidDrop" : ""}`}
+                onDragOver={(event) => {
+                  const hasTemplate = event.dataTransfer.types.includes(
+                      "application/x-renderlaunch-template",
+                    ),
+                    hasAsset = event.dataTransfer.types.includes(
+                      "application/x-renderlaunch-asset",
+                    );
+                  if (!hasTemplate && !hasAsset) return;
+                  event.preventDefault();
+                  const invalid = hasTemplate && track.type !== "video";
+                  event.dataTransfer.dropEffect = invalid ? "none" : "copy";
+                  setDropTarget(invalid ? `invalid:${track.id}` : track.id);
+                }}
+                onDragLeave={() => setDropTarget(undefined)}
+                onDrop={(event) => void dropLibraryItem(event, track)}
+                onPointerDown={(event) => {
+                  if (event.target !== event.currentTarget) return;
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  props.onMasterFrame(
+                    ((event.clientX - rect.left) / rect.width) * totalFrames,
+                  );
+                }}
+              >
+                {!track.clips.length && (
+                  <i>
+                    Drop {track.type === "audio" ? "audio" : "visual content"}{" "}
+                    here
+                  </i>
+                )}
+                {track.clips.map((clip) => (
+                  <button
+                    className={`simpleTimelineClip ${clip.type} ${selectedMasterClipId === clip.id ? "selected" : ""}`}
+                    key={clip.id}
+                    style={{
+                      left: `${(clip.startFrame / totalFrames) * 100}%`,
+                      width: `${(clip.durationInFrames / totalFrames) * 100}%`,
+                    }}
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      setSelectedMasterClipId(clip.id);
+                      if (
+                        !["asset", "audio-clip"].includes(clip.referenceType) ||
+                        track.locked
+                      )
+                        return;
+                      const target = event.currentTarget,
+                        lane = target.parentElement!,
+                        originX = event.clientX,
+                        originStart = clip.startFrame;
+                      let nextStart = originStart;
+                      target.setPointerCapture(event.pointerId);
+                      const move = (pointerEvent: globalThis.PointerEvent) => {
+                        nextStart = Math.max(
+                          0,
+                          Math.round(
+                            originStart +
+                              ((pointerEvent.clientX - originX) /
+                                lane.getBoundingClientRect().width) *
+                                totalFrames,
+                          ),
+                        );
+                        target.style.left = `${(nextStart / totalFrames) * 100}%`;
+                      };
+                      const end = () => {
+                        target.removeEventListener("pointermove", move);
+                        target.removeEventListener("pointerup", end);
+                        if (clip.referenceType === "asset")
+                          updateTimelineAssetClip(clip.id, {
+                            startFrame: nextStart,
+                          });
+                        else if (track.id.startsWith("master-audio:"))
+                          updateAudioClip(
+                            track.id.slice("master-audio:".length),
+                            clip.referenceId,
+                            { startFrame: nextStart },
+                          );
+                      };
+                      target.addEventListener("pointermove", move);
+                      target.addEventListener("pointerup", end);
+                    }}
+                    onDoubleClick={() =>
+                      clip.referenceType === "scene" &&
+                      props.onSelectScene(clip.referenceId)
+                    }
+                  >
+                    <b>{clip.name}</b>
+                    <small>
+                      {formatTimecode(
+                        clip.durationInFrames,
+                        props.videoProject.canvas.fps,
+                      )}
+                    </small>
+                  </button>
+                ))}
+                <span
+                  className="simplePlayhead"
+                  style={{
+                    left: `${(props.masterFrame / totalFrames) * 100}%`,
+                  }}
+                />
+              </div>
+              <div className="emptyTrackActions">
+                <button
+                  title={track.locked ? "Unlock" : "Lock"}
+                  onClick={() =>
+                    updateTrack(track.id, { locked: !track.locked })
+                  }
+                >
+                  {track.locked ? <I.Lock /> : <I.Unlock />}
+                </button>
+                {track.type === "video" ? (
+                  <button
+                    title={track.visible ? "Hide" : "Show"}
+                    onClick={() =>
+                      updateTrack(track.id, { visible: !track.visible })
+                    }
+                  >
+                    {track.visible ? <I.Eye /> : <I.EyeOff />}
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      title={track.muted ? "Unmute" : "Mute"}
+                      onClick={() =>
+                        updateTrack(track.id, { muted: !track.muted })
+                      }
+                    >
+                      {track.muted ? <I.VolumeX /> : <I.Volume2 />}
+                    </button>
+                    <button
+                      className={track.solo ? "active" : ""}
+                      title="Solo"
+                      onClick={() =>
+                        updateTrack(track.id, { solo: !track.solo })
+                      }
+                    >
+                      S
+                    </button>
+                    <input
+                      aria-label={`${track.name} volume`}
+                      type="range"
+                      min="0"
+                      max="2"
+                      step=".05"
+                      value={track.volume}
+                      onChange={(event) =>
+                        updateTrack(track.id, {
+                          volume: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </>
+                )}
+                <button
+                  title="Duplicate track"
+                  onClick={() => duplicateTrack(track.id)}
+                >
+                  <I.Copy />
+                </button>
+                <button
+                  title="Delete track"
+                  onClick={() => {
+                    if (
+                      !track.clips.length ||
+                      window.confirm(
+                        `Delete “${track.name}” and its ${track.clips.length} clip${track.clips.length === 1 ? "" : "s"}?`,
+                      )
+                    )
+                      deleteTrack(track.id);
+                  }}
+                >
+                  <I.Trash2 />
+                </button>
+              </div>
+            </div>
+          ))}
+          {!tracks.length && (
+            <div className="emptyTrackPlaceholder">
+              No tracks. Add a Video or Audio track to begin.
+            </div>
+          )}
+        </div>
+      </section>
+      <footer className="simpleTimelineStatus">
+        <span>
+          <I.CircleCheck /> Project saved
+        </span>
+        <span>{props.videoProject.canvas.fps.toFixed(2)} fps</span>
+        <span>1280 × 720 (16:9)</span>
+        <span>2 ch</span>
+        <i />
+        <button>
+          <I.PanelLeftClose />
+        </button>
+        <button>
+          <I.List />
+        </button>
+        <button>
+          <I.PanelsTopLeft />
+        </button>
+        <button>
+          <I.Maximize />
+        </button>
+      </footer>
+    </main>
+  );
 }
 
-function assetMediaKind(asset: Pick<StoredAsset, "type" | "name">): "image" | "video" | "audio" | "model" | "other" {
-  if (asset.name.toLowerCase().endsWith(".glb") || asset.type.includes("gltf")) return "model";
+function SimpleMasterMediaItem({
+  asset,
+  onAdd,
+}: {
+  asset: StoredAsset;
+  onAdd: () => void;
+}) {
+  const source = useAssetUrl(asset.id),
+    kind = assetMediaKind(asset),
+    Icon =
+      kind === "image"
+        ? I.Image
+        : kind === "video"
+          ? I.Film
+          : kind === "audio"
+            ? I.AudioLines
+            : I.Box;
+  return (
+    <button
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "copy";
+        event.dataTransfer.setData(
+          "application/x-renderlaunch-asset",
+          JSON.stringify({ assetId: asset.id, kind, name: asset.name }),
+        );
+      }}
+      onDoubleClick={onAdd}
+      title={`${asset.name} · Drag to a compatible track`}
+    >
+      <span className={`simpleMediaThumb ${kind}`}>
+        {kind === "image" && source.url ? (
+          <img src={source.url} alt={asset.name} />
+        ) : kind === "video" && source.url ? (
+          <video src={source.url} muted preload="metadata" />
+        ) : (
+          <Icon />
+        )}
+      </span>
+      <b>{asset.name}</b>
+      <small>
+        {kind.toUpperCase()} ·{" "}
+        {asset.size >= 1_000_000
+          ? `${(asset.size / 1_000_000).toFixed(1)} MB`
+          : `${Math.ceil(asset.size / 1000)} KB`}
+      </small>
+    </button>
+  );
+}
+
+function assetMediaKind(
+  asset: Pick<StoredAsset, "type" | "name">,
+): "image" | "video" | "audio" | "model" | "other" {
+  if (asset.name.toLowerCase().endsWith(".glb") || asset.type.includes("gltf"))
+    return "model";
   if (asset.type.startsWith("image/")) return "image";
   if (asset.type.startsWith("video/")) return "video";
   if (asset.type.startsWith("audio/")) return "audio";
   return "other";
 }
 
-function MasterAssetTimelineRow({ track, totalFrames, zoom, playhead, selectedClipIds, activeSceneId, dragActive, onDragEnter, onDragLeave, onDrop, onSceneSelect, onSelect, onChange, onDelete }: { track: TimelineTrack; totalFrames: number; zoom: number; playhead: number; selectedClipIds: string[]; activeSceneId?: string; dragActive: boolean; onDragEnter: () => void; onDragLeave: () => void; onDrop: (event: React.DragEvent<HTMLElement>) => void; onSceneSelect?: (sceneId: string) => void; onSelect: (clipId: string, additive: boolean) => void; onChange: (clipId: string, patch: { startFrame?: number; sourceStartFrame?: number; durationInFrames?: number }) => void; onDelete: (clipId: string) => void }) {
-  const Icon = track.type === "video" ? I.Film : I.Image;
-  const beginEdit = (event: React.PointerEvent<HTMLDivElement | HTMLButtonElement>, clip: TimelineTrack["clips"][number], mode: "move" | "left" | "right") => {
-    event.preventDefault(); event.stopPropagation();
-    if (clip.referenceType === "scene") { onSceneSelect?.(clip.referenceId); return; }
+function MasterAssetTimelineRow({
+  track,
+  totalFrames,
+  zoom,
+  playhead,
+  selectedClipIds,
+  activeSceneId,
+  dragActive,
+  onDragEnter,
+  onDragLeave,
+  onDrop,
+  onSceneSelect,
+  onSelect,
+  onChange,
+  onDelete,
+}: {
+  track: TimelineTrack;
+  totalFrames: number;
+  zoom: number;
+  playhead: number;
+  selectedClipIds: string[];
+  activeSceneId?: string;
+  dragActive: boolean;
+  onDragEnter: () => void;
+  onDragLeave: () => void;
+  onDrop: (event: React.DragEvent<HTMLElement>) => void;
+  onSceneSelect?: (sceneId: string) => void;
+  onSelect: (clipId: string, additive: boolean) => void;
+  onChange: (
+    clipId: string,
+    patch: {
+      startFrame?: number;
+      sourceStartFrame?: number;
+      durationInFrames?: number;
+    },
+  ) => void;
+  onDelete: (clipId: string) => void;
+}) {
+  const Icon = track.type === "video" ? I.Film : I.AudioLines;
+  const beginEdit = (
+    event: React.PointerEvent<HTMLDivElement | HTMLButtonElement>,
+    clip: TimelineTrack["clips"][number],
+    mode: "move" | "left" | "right",
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (clip.referenceType === "scene") {
+      onSceneSelect?.(clip.referenceId);
+      return;
+    }
     onSelect(clip.id, event.ctrlKey || event.metaKey);
-    const target = event.currentTarget, lane = target.closest<HTMLElement>(".masterAssetTrackContent")!, width = lane.getBoundingClientRect().width,
-      originX = event.clientX, originStart = clip.startFrame, originSource = clip.sourceStartFrame, originDuration = clip.durationInFrames;
-    let preview = { startFrame: originStart, sourceStartFrame: originSource, durationInFrames: originDuration };
+    const target = event.currentTarget,
+      lane = target.closest<HTMLElement>(".masterAssetTrackContent")!,
+      width = lane.getBoundingClientRect().width,
+      originX = event.clientX,
+      originStart = clip.startFrame,
+      originSource = clip.sourceStartFrame,
+      originDuration = clip.durationInFrames;
+    let preview = {
+      startFrame: originStart,
+      sourceStartFrame: originSource,
+      durationInFrames: originDuration,
+    };
     target.setPointerCapture(event.pointerId);
     const move = (pointerEvent: globalThis.PointerEvent) => {
-      const delta = Math.round((((pointerEvent.clientX - originX) / Math.max(1, width)) * totalFrames) / 5) * 5;
-      if (mode === "move") preview.startFrame = Math.round(clamp(originStart + delta, 0, totalFrames - originDuration));
-      else if (mode === "left") { const applied = Math.round(clamp(delta, -originSource, originDuration - 1)); preview = { startFrame: Math.max(0, originStart + applied), sourceStartFrame: originSource + applied, durationInFrames: originDuration - applied }; }
-      else preview.durationInFrames = Math.round(clamp(originDuration + delta, 1, totalFrames - originStart));
+      const delta =
+        Math.round(
+          (((pointerEvent.clientX - originX) / Math.max(1, width)) *
+            totalFrames) /
+            5,
+        ) * 5;
+      if (mode === "move")
+        preview.startFrame = Math.round(
+          clamp(originStart + delta, 0, totalFrames - originDuration),
+        );
+      else if (mode === "left") {
+        const applied = Math.round(
+          clamp(delta, -originSource, originDuration - 1),
+        );
+        preview = {
+          startFrame: Math.max(0, originStart + applied),
+          sourceStartFrame: originSource + applied,
+          durationInFrames: originDuration - applied,
+        };
+      } else
+        preview.durationInFrames = Math.round(
+          clamp(originDuration + delta, 1, totalFrames - originStart),
+        );
       const clipElement = mode === "move" ? target : target.parentElement;
-      clipElement?.style.setProperty("left", `${(preview.startFrame / totalFrames) * 100}%`);
-      clipElement?.style.setProperty("width", `${(preview.durationInFrames / totalFrames) * 100}%`);
+      clipElement?.style.setProperty(
+        "left",
+        `${(preview.startFrame / totalFrames) * 100}%`,
+      );
+      clipElement?.style.setProperty(
+        "width",
+        `${(preview.durationInFrames / totalFrames) * 100}%`,
+      );
     };
-    const end = () => { target.removeEventListener("pointermove", move as EventListener); target.removeEventListener("pointerup", end); target.removeEventListener("pointercancel", end); onChange(clip.id, preview); };
-    target.addEventListener("pointermove", move as EventListener); target.addEventListener("pointerup", end); target.addEventListener("pointercancel", end);
+    const end = () => {
+      target.removeEventListener("pointermove", move as EventListener);
+      target.removeEventListener("pointerup", end);
+      target.removeEventListener("pointercancel", end);
+      onChange(clip.id, preview);
+    };
+    target.addEventListener("pointermove", move as EventListener);
+    target.addEventListener("pointerup", end);
+    target.addEventListener("pointercancel", end);
   };
-  return <div className={`masterAssetTrack timelineDropZone ${dragActive ? "compatibleDrop" : ""}`} onDragOver={(event) => { if (event.dataTransfer.types.includes("application/x-renderlaunch-asset") || event.dataTransfer.types.includes("application/x-renderlaunch-template")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; onDragEnter(); } }} onDragLeave={onDragLeave} onDrop={onDrop}>
-    <div className="masterAssetTrackLabel"><Icon /><b>{track.name}</b><I.Eye /></div>
-    <div className="masterAssetTrackLane"><div className="masterAssetTrackContent dropTimelineContent" style={{ width: `${zoom * 100}%` }}>
-      {track.clips.map((clip) => <div key={`editable:${clip.id}`} data-timeline-clip-id={clip.referenceType === "asset" ? `asset:${clip.id}` : undefined} className={`masterAssetClip ${clip.type} ${selectedClipIds.includes(`asset:${clip.id}`) || (clip.referenceType === "scene" && clip.referenceId === activeSceneId) ? "selected" : ""}`} style={{ left: `${(clip.startFrame / totalFrames) * 100}%`, width: `${(clip.durationInFrames / totalFrames) * 100}%` }} title={`${clip.name} · ${clip.durationInFrames} frames`} onPointerDown={(event) => beginEdit(event, clip, "move")}>
-        {clip.referenceType === "asset" && <button className="masterAssetTrim left" aria-label="Trim clip start" onPointerDown={(event) => beginEdit(event, clip, "left")} />}
-        <Icon /><b>{clip.name}</b>
-        {clip.referenceType === "asset" && <><button className="masterAssetDelete" title="Remove clip" onPointerDown={(event) => event.stopPropagation()} onClick={() => onDelete(clip.id)}><I.X /></button><button className="masterAssetTrim right" aria-label="Trim clip end" onPointerDown={(event) => beginEdit(event, clip, "right")} /></>}
-      </div>)}
-      <div className="masterPlayhead" style={{ left: `${(playhead / Math.max(1, totalFrames)) * 100}%` }} />
-    </div></div>
-  </div>;
-}
-
-function AssetLibraryItem({ asset, folders, referenced, onRefresh }: { asset: StoredAsset; folders: AssetFolder[]; referenced: boolean; onRefresh: () => Promise<void> }) {
-  const source = useAssetUrl(asset.id), kind = assetMediaKind(asset), Icon = kind === "image" ? I.Image : kind === "video" ? I.Film : kind === "audio" ? I.AudioLines : I.Box;
-  return <div className="assetLibraryItem" draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "copy"; event.dataTransfer.setData("application/x-renderlaunch-asset", JSON.stringify({ assetId: asset.id, kind, name: asset.name })); event.dataTransfer.setData("text/plain", asset.id); }}>
-    <div className={`assetPreview ${kind}`}>{kind === "image" && source.url ? <img src={source.url} alt="" /> : kind === "video" && source.url ? <video src={source.url} muted preload="metadata" /> : <Icon />}{referenced && <i title="Used in project"><I.Link /></i>}</div>
-    <div className="assetInfo"><b title={asset.name}>{asset.name}</b><small>{kind.toUpperCase()} · {asset.size >= 1_000_000 ? `${(asset.size / 1_000_000).toFixed(1)} MB` : `${Math.ceil(asset.size / 1000)} KB`}</small></div>
-    <div className="assetItemControls"><select aria-label={`Folder for ${asset.name}`} value={asset.folderId ?? "root"} onChange={async (event) => { await moveAsset(asset.id, event.target.value === "root" ? undefined : event.target.value); await onRefresh(); }}><option value="root">Unfiled</option>{folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><button title="Rename" onClick={async () => { const name = window.prompt("Rename asset", asset.name)?.trim(); if (name) { await renameAsset(asset.id, name); await onRefresh(); } }}><I.Pencil /></button><button title="Duplicate" onClick={async () => { await duplicateAsset(asset.id); await onRefresh(); }}><I.Copy /></button><button className="danger" title="Delete" onClick={async () => { const warning = referenced ? "This asset is used in the current project and deleting it will create a missing-file reference. Continue?" : `Delete “${asset.name}”?`; if (window.confirm(warning)) { await deleteAsset(asset.id); await onRefresh(); } }}><I.Trash2 /></button></div>
-  </div>;
-}
-
-function MasterPreviewCompositor({ playback, videoProject, tracks, frame, playing, onMediaFrameReady }: { playback: ReturnType<typeof resolveMasterFrame>; videoProject: VideoProject; tracks: TimelineTrack[]; frame: number; playing: boolean; onMediaFrameReady?: (frame: number) => void }) {
-  const orderedTracks = [...tracks].sort((a, b) => a.order - b.order), sceneTrack = orderedTracks.find((track) => track.type === "scene"),
-    audioTracks = videoProject.audioTracks.map((audioTrack) => { const timelineTrack = orderedTracks.find((track) => track.id === `master-audio:${audioTrack.id}`); return { ...audioTrack, muted: audioTrack.muted || timelineTrack?.muted === true || timelineTrack?.visible === false }; });
-  return <div className="masterCompositor">
-    {sceneTrack?.visible !== false && <div className="masterCompositorTrack" style={{ zIndex: sceneTrack?.order ?? 0, opacity: sceneTrack?.opacity ?? 1 }}><MasterPlaybackVisual playback={playback} videoProject={videoProject} playing={playing} onMediaFrameReady={onMediaFrameReady} /></div>}
-    {orderedTracks.filter((track) => track.visible && track.type !== "scene" && track.type !== "audio").map((track) => {
-      const assetClips = track.clips.filter((clip) => clip.referenceType === "asset"), overlayIds = new Set(track.clips.filter((clip) => clip.referenceType === "overlay").map((clip) => clip.referenceId)),
-        overlays = videoProject.globalOverlays.filter((overlay) => overlayIds.has(overlay.id));
-      return <div key={track.id} className="masterCompositorTrack" data-compositor-track={track.id} style={{ zIndex: track.order, opacity: track.opacity }}>
-        {!!assetClips.length && <MasterMediaClips clips={assetClips} frame={frame} fps={videoProject.canvas.fps} playing={playing} />}
-        {!!overlays.length && <MasterOverlays overlays={overlays} frame={frame} />}
-      </div>;
-    })}
-    <MasterAudioEngine tracks={audioTracks} frame={frame} fps={videoProject.canvas.fps} playing={playing} />
-  </div>;
-}
-
-function MasterOverlays({ overlays, frame }: { overlays: GlobalOverlay[]; frame: number }) {
-  return <div className="masterOverlays">{overlays.filter((overlay) => frame >= overlay.startFrame && frame < overlay.startFrame + overlay.durationInFrames).map((overlay) => <MasterOverlay key={overlay.id} overlay={overlay} frame={frame} />)}</div>;
-}
-
-function MasterMediaClips({ clips, frame, fps, playing }: { clips: TimelineClip[]; frame: number; fps: number; playing: boolean }) {
-  return <div className="masterMediaClips">{clips.filter((clip) => frame >= clip.startFrame && frame < clip.startFrame + clip.durationInFrames).map((clip) => <MasterMediaClip key={clip.id} clip={clip} frame={frame} fps={fps} playing={playing} />)}</div>;
-}
-
-function MasterMediaClip({ clip, frame, fps, playing }: { clip: TimelineClip; frame: number; fps: number; playing: boolean }) {
-  const source = useAssetUrl(clip.assetId), videoRef = useRef<HTMLVideoElement>(null), localFrame = frame - clip.startFrame;
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || clip.type !== "video") return;
-    const desired = (clip.sourceStartFrame + Math.max(0, localFrame)) / fps;
-    if (Math.abs(video.currentTime - desired) > .12) video.currentTime = desired;
-    if (playing) void video.play().catch(() => undefined); else video.pause();
-  }, [clip.sourceStartFrame, clip.type, fps, localFrame, playing]);
-  if (!source.url) return null;
-  const style = { left: `${clip.x}%`, top: `${clip.y}%`, opacity: clip.opacity, transform: `translate(-50%, -50%) scale(${clip.scale})`, objectFit: clip.crop === "stretch" ? "fill" : clip.crop } as React.CSSProperties;
-  return clip.type === "video" ? <video ref={videoRef} className="masterMediaClip" src={source.url} style={style} muted playsInline preload="auto" /> : <img className="masterMediaClip" src={source.url} style={style} alt={clip.name} />;
-}
-
-function MasterOverlay({ overlay, frame }: { overlay: GlobalOverlay; frame: number }) {
-  const asset = useAssetUrl(overlay.assetId), image = overlay.type === "logo" || overlay.type === "watermark";
-  const progress = clamp((frame - overlay.startFrame) / 15, 0, 1), animatedOpacity = overlay.animation === "fade" ? progress * overlay.opacity : overlay.opacity,
-    animatedTransform = overlay.animation === "slide-up" ? `translateY(${(1 - progress) * 24}px)` : undefined,
-    content = overlay.animation === "typewriter" ? overlay.content.slice(0, Math.ceil(overlay.content.length * clamp((frame - overlay.startFrame) / 45, 0, 1))) : overlay.content;
   return (
-    <div className={`masterOverlay ${overlay.type}`} style={{ left: `${overlay.x}%`, top: `${overlay.y}%`, width: `${overlay.width}%`, opacity: animatedOpacity, transform: animatedTransform, color: overlay.color, background: overlay.backgroundColor, fontFamily: overlay.fontFamily, fontSize: `${overlay.fontSize / 12.8}cqw`, fontWeight: overlay.fontWeight, textAlign: overlay.textAlign }}>
-      {image ? asset.url ? <img src={asset.url} alt={overlay.name} /> : <span><I.Image /> {overlay.name}</span> : content}
+    <div
+      className={`masterAssetTrack timelineDropZone ${dragActive ? "compatibleDrop" : ""}`}
+      onDragOver={(event) => {
+        if (
+          event.dataTransfer.types.includes(
+            "application/x-renderlaunch-asset",
+          ) ||
+          event.dataTransfer.types.includes(
+            "application/x-renderlaunch-template",
+          )
+        ) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+          onDragEnter();
+        }
+      }}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      <div className="masterAssetTrackLabel">
+        <Icon />
+        <b>{track.name}</b>
+        <I.Eye />
+      </div>
+      <div className="masterAssetTrackLane">
+        <div
+          className="masterAssetTrackContent dropTimelineContent"
+          style={{ width: `${zoom * 100}%` }}
+        >
+          {track.clips.map((clip) => (
+            <div
+              key={`editable:${clip.id}`}
+              data-timeline-clip-id={
+                clip.referenceType === "asset" ? `asset:${clip.id}` : undefined
+              }
+              className={`masterAssetClip ${clip.type} ${selectedClipIds.includes(`asset:${clip.id}`) || (clip.referenceType === "scene" && clip.referenceId === activeSceneId) ? "selected" : ""}`}
+              style={{
+                left: `${(clip.startFrame / totalFrames) * 100}%`,
+                width: `${(clip.durationInFrames / totalFrames) * 100}%`,
+              }}
+              title={`${clip.name} · ${clip.durationInFrames} frames`}
+              onPointerDown={(event) => beginEdit(event, clip, "move")}
+            >
+              {clip.referenceType === "asset" && (
+                <button
+                  className="masterAssetTrim left"
+                  aria-label="Trim clip start"
+                  onPointerDown={(event) => beginEdit(event, clip, "left")}
+                />
+              )}
+              <Icon />
+              <b>{clip.name}</b>
+              {clip.referenceType === "asset" && (
+                <>
+                  <button
+                    className="masterAssetDelete"
+                    title="Remove clip"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={() => onDelete(clip.id)}
+                  >
+                    <I.X />
+                  </button>
+                  <button
+                    className="masterAssetTrim right"
+                    aria-label="Trim clip end"
+                    onPointerDown={(event) => beginEdit(event, clip, "right")}
+                  />
+                </>
+              )}
+            </div>
+          ))}
+          <div
+            className="masterPlayhead"
+            style={{ left: `${(playhead / Math.max(1, totalFrames)) * 100}%` }}
+          />
+        </div>
+      </div>
     </div>
   );
 }
 
-function OverlayTimelineClip({ overlay, totalFrames, selected, onSelect, onChange }: { overlay: GlobalOverlay; totalFrames: number; selected: boolean; onSelect: (additive: boolean) => void; onChange: (patch: Partial<GlobalOverlay>) => void }) {
-  const beginDrag = (event: React.PointerEvent<HTMLElement>, edge?: "left" | "right") => {
-    event.preventDefault(); event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey);
-    const target = event.currentTarget.closest<HTMLElement>(".overlayClip")!, lane = target.closest<HTMLElement>(".overlayTrackContent")!, startX = event.clientX,
-      original = { start: overlay.startFrame, duration: overlay.durationInFrames };
+function AssetLibraryItem({
+  asset,
+  folders,
+  referenced,
+  onRefresh,
+}: {
+  asset: StoredAsset;
+  folders: AssetFolder[];
+  referenced: boolean;
+  onRefresh: () => Promise<void>;
+}) {
+  const source = useAssetUrl(asset.id),
+    kind = assetMediaKind(asset),
+    Icon =
+      kind === "image"
+        ? I.Image
+        : kind === "video"
+          ? I.Film
+          : kind === "audio"
+            ? I.AudioLines
+            : I.Box;
+  return (
+    <div
+      className="assetLibraryItem"
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "copy";
+        event.dataTransfer.setData(
+          "application/x-renderlaunch-asset",
+          JSON.stringify({ assetId: asset.id, kind, name: asset.name }),
+        );
+        event.dataTransfer.setData("text/plain", asset.id);
+      }}
+    >
+      <div className={`assetPreview ${kind}`}>
+        {kind === "image" && source.url ? (
+          <img src={source.url} alt="" />
+        ) : kind === "video" && source.url ? (
+          <video src={source.url} muted preload="metadata" />
+        ) : (
+          <Icon />
+        )}
+        {referenced && (
+          <i title="Used in project">
+            <I.Link />
+          </i>
+        )}
+      </div>
+      <div className="assetInfo">
+        <b title={asset.name}>{asset.name}</b>
+        <small>
+          {kind.toUpperCase()} ·{" "}
+          {asset.size >= 1_000_000
+            ? `${(asset.size / 1_000_000).toFixed(1)} MB`
+            : `${Math.ceil(asset.size / 1000)} KB`}
+        </small>
+      </div>
+      <div className="assetItemControls">
+        <select
+          aria-label={`Folder for ${asset.name}`}
+          value={asset.folderId ?? "root"}
+          onChange={async (event) => {
+            await moveAsset(
+              asset.id,
+              event.target.value === "root" ? undefined : event.target.value,
+            );
+            await onRefresh();
+          }}
+        >
+          <option value="root">Unfiled</option>
+          {folders.map((folder) => (
+            <option key={folder.id} value={folder.id}>
+              {folder.name}
+            </option>
+          ))}
+        </select>
+        <button
+          title="Rename"
+          onClick={async () => {
+            const name = window.prompt("Rename asset", asset.name)?.trim();
+            if (name) {
+              await renameAsset(asset.id, name);
+              await onRefresh();
+            }
+          }}
+        >
+          <I.Pencil />
+        </button>
+        <button
+          title="Duplicate"
+          onClick={async () => {
+            await duplicateAsset(asset.id);
+            await onRefresh();
+          }}
+        >
+          <I.Copy />
+        </button>
+        <button
+          className="danger"
+          title="Delete"
+          onClick={async () => {
+            const warning = referenced
+              ? "This asset is used in the current project and deleting it will create a missing-file reference. Continue?"
+              : `Delete “${asset.name}”?`;
+            if (window.confirm(warning)) {
+              await deleteAsset(asset.id);
+              await onRefresh();
+            }
+          }}
+        >
+          <I.Trash2 />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MasterPreviewCompositor({
+  playback,
+  videoProject,
+  tracks,
+  frame,
+  playing,
+  onMediaFrameReady,
+}: {
+  playback: ReturnType<typeof resolveMasterFrame>;
+  videoProject: VideoProject;
+  tracks: TimelineTrack[];
+  frame: number;
+  playing: boolean;
+  onMediaFrameReady?: (frame: number) => void;
+}) {
+  const orderedTracks = [...tracks].sort((a, b) => a.order - b.order),
+    linkedAudioAssetIds = new Set(
+      videoProject.audioTracks.flatMap((track) =>
+        track.clips.map((clip) => clip.assetId),
+      ),
+    ),
+    anyAudioSolo = orderedTracks.some(
+      (track) => track.type === "audio" && track.solo,
+    ),
+    audioTracks = videoProject.audioTracks.map((audioTrack) => {
+      const timelineTrack = orderedTracks.find(
+        (track) => track.id === `master-audio:${audioTrack.id}`,
+      );
+      return {
+        ...audioTrack,
+        volume: audioTrack.volume * (timelineTrack?.volume ?? 1),
+        muted:
+          audioTrack.muted ||
+          timelineTrack?.muted === true ||
+          timelineTrack?.visible === false ||
+          (anyAudioSolo && !timelineTrack?.solo),
+      };
+    });
+  return (
+    <div className="masterCompositor">
+      {orderedTracks
+        .filter((track) => track.visible && track.type !== "audio")
+        .map((track) => {
+          const assetClips = track.clips.filter(
+              (clip) => clip.referenceType === "asset",
+            ),
+            overlayIds = new Set(
+              track.clips
+                .filter((clip) => clip.referenceType === "overlay")
+                .map((clip) => clip.referenceId),
+            ),
+            overlays = videoProject.globalOverlays.filter((overlay) =>
+              overlayIds.has(overlay.id),
+            ),
+            hasActiveScene =
+              !!playback.scene &&
+              track.clips.some(
+                (clip) =>
+                  clip.referenceType === "scene" &&
+                  clip.referenceId === playback.scene.id &&
+                  frame >= clip.startFrame &&
+                  frame < clip.startFrame + clip.durationInFrames,
+              );
+          return (
+            <div
+              key={track.id}
+              className="masterCompositorTrack"
+              data-compositor-track={track.id}
+              style={{ zIndex: track.order, opacity: track.opacity }}
+            >
+              {hasActiveScene && (
+                <MasterPlaybackVisual
+                  playback={playback}
+                  videoProject={videoProject}
+                  playing={playing}
+                  onMediaFrameReady={onMediaFrameReady}
+                />
+              )}
+              {!!assetClips.length && (
+                <MasterMediaClips
+                  clips={assetClips}
+                  frame={frame}
+                  fps={videoProject.canvas.fps}
+                  playing={playing}
+                  muted={track.muted}
+                  volume={track.volume}
+                  linkedAudioAssetIds={linkedAudioAssetIds}
+                />
+              )}
+              {!!overlays.length && (
+                <MasterOverlays overlays={overlays} frame={frame} />
+              )}
+            </div>
+          );
+        })}
+      <MasterAudioEngine
+        tracks={audioTracks}
+        frame={frame}
+        fps={videoProject.canvas.fps}
+        playing={playing}
+      />
+    </div>
+  );
+}
+
+function MasterOverlays({
+  overlays,
+  frame,
+}: {
+  overlays: GlobalOverlay[];
+  frame: number;
+}) {
+  return (
+    <div className="masterOverlays">
+      {overlays
+        .filter(
+          (overlay) =>
+            frame >= overlay.startFrame &&
+            frame < overlay.startFrame + overlay.durationInFrames,
+        )
+        .map((overlay) => (
+          <MasterOverlay key={overlay.id} overlay={overlay} frame={frame} />
+        ))}
+    </div>
+  );
+}
+
+function MasterMediaClips({
+  clips,
+  frame,
+  fps,
+  playing,
+  muted,
+  volume,
+  linkedAudioAssetIds,
+}: {
+  clips: TimelineClip[];
+  frame: number;
+  fps: number;
+  playing: boolean;
+  muted: boolean;
+  volume: number;
+  linkedAudioAssetIds: Set<string>;
+}) {
+  return (
+    <div className="masterMediaClips">
+      {clips
+        .filter(
+          (clip) =>
+            frame >= clip.startFrame &&
+            frame < clip.startFrame + clip.durationInFrames,
+        )
+        .map((clip) => (
+          <MasterMediaClip
+            key={clip.id}
+            clip={clip}
+            frame={frame}
+            fps={fps}
+            playing={playing}
+            muted={
+              muted || (!!clip.assetId && linkedAudioAssetIds.has(clip.assetId))
+            }
+            volume={volume}
+          />
+        ))}
+    </div>
+  );
+}
+
+function MasterMediaClip({
+  clip,
+  frame,
+  fps,
+  playing,
+  muted,
+  volume,
+}: {
+  clip: TimelineClip;
+  frame: number;
+  fps: number;
+  playing: boolean;
+  muted: boolean;
+  volume: number;
+}) {
+  const source = useAssetUrl(clip.assetId),
+    videoRef = useRef<HTMLVideoElement>(null),
+    localFrame = frame - clip.startFrame;
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || clip.type !== "video") return;
+    video.muted = muted;
+    video.volume = clamp(volume, 0, 1);
+    const desired = (clip.sourceStartFrame + Math.max(0, localFrame)) / fps;
+    if (Math.abs(video.currentTime - desired) > 0.12)
+      video.currentTime = desired;
+    if (playing) void video.play().catch(() => undefined);
+    else video.pause();
+  }, [
+    clip.sourceStartFrame,
+    clip.type,
+    fps,
+    localFrame,
+    muted,
+    playing,
+    volume,
+  ]);
+  if (!source.url) return null;
+  const style = {
+    left: `${clip.x}%`,
+    top: `${clip.y}%`,
+    opacity: clip.opacity,
+    transform: `translate(-50%, -50%) scale(${clip.scale})`,
+    objectFit: clip.crop === "stretch" ? "fill" : clip.crop,
+  } as React.CSSProperties;
+  return clip.type === "video" ? (
+    <video
+      ref={videoRef}
+      className="masterMediaClip"
+      src={source.url}
+      style={style}
+      muted={muted}
+      playsInline
+      preload="auto"
+    />
+  ) : (
+    <img
+      className="masterMediaClip"
+      src={source.url}
+      style={style}
+      alt={clip.name}
+    />
+  );
+}
+
+function MasterOverlay({
+  overlay,
+  frame,
+}: {
+  overlay: GlobalOverlay;
+  frame: number;
+}) {
+  const asset = useAssetUrl(overlay.assetId),
+    image = overlay.type === "logo" || overlay.type === "watermark";
+  const progress = clamp((frame - overlay.startFrame) / 15, 0, 1),
+    animatedOpacity =
+      overlay.animation === "fade"
+        ? progress * overlay.opacity
+        : overlay.opacity,
+    animatedTransform =
+      overlay.animation === "slide-up"
+        ? `translateY(${(1 - progress) * 24}px)`
+        : undefined,
+    content =
+      overlay.animation === "typewriter"
+        ? overlay.content.slice(
+            0,
+            Math.ceil(
+              overlay.content.length *
+                clamp((frame - overlay.startFrame) / 45, 0, 1),
+            ),
+          )
+        : overlay.content;
+  return (
+    <div
+      className={`masterOverlay ${overlay.type}`}
+      style={{
+        left: `${overlay.x}%`,
+        top: `${overlay.y}%`,
+        width: `${overlay.width}%`,
+        opacity: animatedOpacity,
+        transform: animatedTransform,
+        color: overlay.color,
+        background: overlay.backgroundColor,
+        fontFamily: overlay.fontFamily,
+        fontSize: `${overlay.fontSize / 12.8}cqw`,
+        fontWeight: overlay.fontWeight,
+        textAlign: overlay.textAlign,
+      }}
+    >
+      {image ? (
+        asset.url ? (
+          <img src={asset.url} alt={overlay.name} />
+        ) : (
+          <span>
+            <I.Image /> {overlay.name}
+          </span>
+        )
+      ) : (
+        content
+      )}
+    </div>
+  );
+}
+
+function OverlayTimelineClip({
+  overlay,
+  totalFrames,
+  selected,
+  onSelect,
+  onChange,
+}: {
+  overlay: GlobalOverlay;
+  totalFrames: number;
+  selected: boolean;
+  onSelect: (additive: boolean) => void;
+  onChange: (patch: Partial<GlobalOverlay>) => void;
+}) {
+  const beginDrag = (
+    event: React.PointerEvent<HTMLElement>,
+    edge?: "left" | "right",
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onSelect(event.ctrlKey || event.metaKey);
+    const target = event.currentTarget.closest<HTMLElement>(".overlayClip")!,
+      lane = target.closest<HTMLElement>(".overlayTrackContent")!,
+      startX = event.clientX,
+      original = {
+        start: overlay.startFrame,
+        duration: overlay.durationInFrames,
+      };
     target.setPointerCapture(event.pointerId);
     let patch: Partial<GlobalOverlay> = {};
     const move = (pointerEvent: globalThis.PointerEvent) => {
-      const delta = Math.round(((pointerEvent.clientX - startX) / Math.max(1, lane.getBoundingClientRect().width)) * totalFrames);
+      const delta = Math.round(
+        ((pointerEvent.clientX - startX) /
+          Math.max(1, lane.getBoundingClientRect().width)) *
+          totalFrames,
+      );
       if (edge === "left") {
-        const applied = Math.round(clamp(delta, -original.start, original.duration - 1));
-        patch = { startFrame: original.start + applied, durationInFrames: original.duration - applied };
-      } else if (edge === "right") patch = { durationInFrames: Math.round(clamp(original.duration + delta, 1, totalFrames - original.start)) };
-      else patch = { startFrame: Math.round(clamp(original.start + delta, 0, totalFrames - original.duration)) };
+        const applied = Math.round(
+          clamp(delta, -original.start, original.duration - 1),
+        );
+        patch = {
+          startFrame: original.start + applied,
+          durationInFrames: original.duration - applied,
+        };
+      } else if (edge === "right")
+        patch = {
+          durationInFrames: Math.round(
+            clamp(original.duration + delta, 1, totalFrames - original.start),
+          ),
+        };
+      else
+        patch = {
+          startFrame: Math.round(
+            clamp(original.start + delta, 0, totalFrames - original.duration),
+          ),
+        };
       target.style.left = `${((patch.startFrame ?? original.start) / totalFrames) * 100}%`;
       target.style.width = `${((patch.durationInFrames ?? original.duration) / totalFrames) * 100}%`;
     };
-    const end = () => { target.removeEventListener("pointermove", move); target.removeEventListener("pointerup", end); target.removeEventListener("pointercancel", end); if (Object.keys(patch).length) onChange(patch); };
-    target.addEventListener("pointermove", move); target.addEventListener("pointerup", end); target.addEventListener("pointercancel", end);
+    const end = () => {
+      target.removeEventListener("pointermove", move);
+      target.removeEventListener("pointerup", end);
+      target.removeEventListener("pointercancel", end);
+      if (Object.keys(patch).length) onChange(patch);
+    };
+    target.addEventListener("pointermove", move);
+    target.addEventListener("pointerup", end);
+    target.addEventListener("pointercancel", end);
   };
-  return <div data-timeline-clip-id={`overlay:${overlay.id}`} className={`overlayClip ${selected ? "selected" : ""}`} style={{ left: `${(overlay.startFrame / totalFrames) * 100}%`, width: `${(overlay.durationInFrames / totalFrames) * 100}%` }} onPointerDown={beginDrag}>
-    <button className="overlayTrim left" onPointerDown={(event) => beginDrag(event, "left")} />
-    {overlay.type === "logo" || overlay.type === "watermark" ? <I.Image /> : <I.Type />}<b>{overlay.name}</b>
-    <button className="overlayTrim right" onPointerDown={(event) => beginDrag(event, "right")} />
-  </div>;
+  return (
+    <div
+      data-timeline-clip-id={`overlay:${overlay.id}`}
+      className={`overlayClip ${selected ? "selected" : ""}`}
+      style={{
+        left: `${(overlay.startFrame / totalFrames) * 100}%`,
+        width: `${(overlay.durationInFrames / totalFrames) * 100}%`,
+      }}
+      onPointerDown={beginDrag}
+    >
+      <button
+        className="overlayTrim left"
+        onPointerDown={(event) => beginDrag(event, "left")}
+      />
+      {overlay.type === "logo" || overlay.type === "watermark" ? (
+        <I.Image />
+      ) : (
+        <I.Type />
+      )}
+      <b>{overlay.name}</b>
+      <button
+        className="overlayTrim right"
+        onPointerDown={(event) => beginDrag(event, "right")}
+      />
+    </div>
+  );
 }
 
 async function inspectAudio(file: File, fps: number) {
@@ -1791,22 +5343,48 @@ async function inspectAudio(file: File, fps: number) {
           peak = Math.max(peak, Math.abs(samples[sample]));
         return Math.min(1, peak);
       });
-    return { durationInFrames: Math.max(1, Math.ceil(buffer.duration * fps)), waveform };
+    return {
+      durationInFrames: Math.max(1, Math.ceil(buffer.duration * fps)),
+      waveform,
+    };
   } finally {
     void context.close();
   }
 }
 
-async function inspectMediaDurationFrames(blob: Blob, type: string, fps: number) {
-  const url = URL.createObjectURL(blob), media = document.createElement(type.startsWith("audio/") ? "audio" : "video");
+async function inspectMediaDurationFrames(
+  blob: Blob,
+  type: string,
+  fps: number,
+) {
+  const url = URL.createObjectURL(blob),
+    media = document.createElement(
+      type.startsWith("audio/") ? "audio" : "video",
+    );
   try {
     media.preload = "metadata";
-    const duration = await new Promise<number>((resolve, reject) => { media.onloadedmetadata = () => resolve(media.duration); media.onerror = () => reject(new Error("The media duration could not be read.")); media.src = url; });
+    const duration = await new Promise<number>((resolve, reject) => {
+      media.onloadedmetadata = () => resolve(media.duration);
+      media.onerror = () =>
+        reject(new Error("The media duration could not be read."));
+      media.src = url;
+    });
     return Math.max(1, Math.ceil(duration * fps));
-  } finally { media.removeAttribute("src"); media.load(); URL.revokeObjectURL(url); }
+  } finally {
+    media.removeAttribute("src");
+    media.load();
+    URL.revokeObjectURL(url);
+  }
 }
 
-function AudioTimelineClip({ clip, timelineId, totalFrames, selected, onSelect, onChange }: {
+function AudioTimelineClip({
+  clip,
+  timelineId,
+  totalFrames,
+  selected,
+  onSelect,
+  onChange,
+}: {
   clip: AudioClip;
   timelineId: string;
   totalFrames: number;
@@ -1814,29 +5392,62 @@ function AudioTimelineClip({ clip, timelineId, totalFrames, selected, onSelect, 
   onSelect: (additive: boolean) => void;
   onChange: (patch: Partial<AudioClip>) => void;
 }) {
-  const beginDrag = (event: React.PointerEvent<HTMLDivElement>, edge?: "left" | "right") => {
+  const beginDrag = (
+    event: React.PointerEvent<HTMLDivElement>,
+    edge?: "left" | "right",
+  ) => {
     event.preventDefault();
     event.stopPropagation();
     onSelect(event.ctrlKey || event.metaKey);
     const target = event.currentTarget,
       lane = target.closest<HTMLElement>(".audioTrackContent")!,
       startX = event.clientX,
-      original = { start: clip.startFrame, source: clip.sourceStartFrame, duration: clip.durationInFrames };
+      original = {
+        start: clip.startFrame,
+        source: clip.sourceStartFrame,
+        duration: clip.durationInFrames,
+      };
     target.setPointerCapture(event.pointerId);
     let patch: Partial<AudioClip> = {};
     const move = (pointerEvent: globalThis.PointerEvent) => {
-      const delta = Math.round(((pointerEvent.clientX - startX) / Math.max(1, lane.getBoundingClientRect().width)) * totalFrames);
+      const delta = Math.round(
+        ((pointerEvent.clientX - startX) /
+          Math.max(1, lane.getBoundingClientRect().width)) *
+          totalFrames,
+      );
       if (edge === "left") {
-        const applied = Math.round(clamp(delta, -original.source, original.duration - 1));
-        patch = { startFrame: Math.max(0, original.start + applied), sourceStartFrame: original.source + applied, durationInFrames: original.duration - applied };
+        const applied = Math.round(
+          clamp(delta, -original.source, original.duration - 1),
+        );
+        patch = {
+          startFrame: Math.max(0, original.start + applied),
+          sourceStartFrame: original.source + applied,
+          durationInFrames: original.duration - applied,
+        };
       } else if (edge === "right") {
-        patch = { durationInFrames: Math.round(clamp(original.duration + delta, 1, clip.sourceDurationInFrames - original.source)) };
+        patch = {
+          durationInFrames: Math.round(
+            clamp(
+              original.duration + delta,
+              1,
+              clip.sourceDurationInFrames - original.source,
+            ),
+          ),
+        };
       } else {
-        patch = { startFrame: Math.round(clamp(original.start + delta, 0, Math.max(0, totalFrames - original.duration))) };
+        patch = {
+          startFrame: Math.round(
+            clamp(
+              original.start + delta,
+              0,
+              Math.max(0, totalFrames - original.duration),
+            ),
+          ),
+        };
       }
       Object.assign(target.style, {
-        left: `${(((patch.startFrame ?? original.start) / totalFrames) * 100)}%`,
-        width: `${(((patch.durationInFrames ?? original.duration) / totalFrames) * 100)}%`,
+        left: `${((patch.startFrame ?? original.start) / totalFrames) * 100}%`,
+        width: `${((patch.durationInFrames ?? original.duration) / totalFrames) * 100}%`,
       });
     };
     const end = () => {
@@ -1850,35 +5461,108 @@ function AudioTimelineClip({ clip, timelineId, totalFrames, selected, onSelect, 
     target.addEventListener("pointercancel", end);
   };
   return (
-    <div data-timeline-clip-id={timelineId} className={`audioClip ${selected ? "selected" : ""}`} style={{ left: `${(clip.startFrame / totalFrames) * 100}%`, width: `${(clip.durationInFrames / totalFrames) * 100}%` }} onPointerDown={(event) => beginDrag(event)}>
-      <button className="audioTrim left" onPointerDown={(event) => beginDrag(event as unknown as React.PointerEvent<HTMLDivElement>, "left")} />
-      <span>{clip.waveform.map((peak, index) => <i key={index} style={{ height: `${Math.max(8, peak * 100)}%` }} />)}</span>
+    <div
+      data-timeline-clip-id={timelineId}
+      className={`audioClip ${selected ? "selected" : ""}`}
+      style={{
+        left: `${(clip.startFrame / totalFrames) * 100}%`,
+        width: `${(clip.durationInFrames / totalFrames) * 100}%`,
+      }}
+      onPointerDown={(event) => beginDrag(event)}
+    >
+      <button
+        className="audioTrim left"
+        onPointerDown={(event) =>
+          beginDrag(
+            event as unknown as React.PointerEvent<HTMLDivElement>,
+            "left",
+          )
+        }
+      />
+      <span>
+        {clip.waveform.map((peak, index) => (
+          <i key={index} style={{ height: `${Math.max(8, peak * 100)}%` }} />
+        ))}
+      </span>
       <b>{clip.fileName}</b>
-      <button className="audioTrim right" onPointerDown={(event) => beginDrag(event as unknown as React.PointerEvent<HTMLDivElement>, "right")} />
+      <button
+        className="audioTrim right"
+        onPointerDown={(event) =>
+          beginDrag(
+            event as unknown as React.PointerEvent<HTMLDivElement>,
+            "right",
+          )
+        }
+      />
     </div>
   );
 }
 
-function MasterAudioEngine({ tracks, frame, fps, playing }: { tracks: AudioTrack[]; frame: number; fps: number; playing: boolean }) {
-  return <div hidden>{tracks.flatMap((track) => track.clips.map((clip) => <AudioClipPlayer key={`${track.id}-${clip.id}`} track={track} clip={clip} frame={frame} fps={fps} playing={playing} />))}</div>;
+function MasterAudioEngine({
+  tracks,
+  frame,
+  fps,
+  playing,
+}: {
+  tracks: AudioTrack[];
+  frame: number;
+  fps: number;
+  playing: boolean;
+}) {
+  return (
+    <div hidden>
+      {tracks.flatMap((track) =>
+        track.clips.map((clip) => (
+          <AudioClipPlayer
+            key={`${track.id}-${clip.id}`}
+            track={track}
+            clip={clip}
+            frame={frame}
+            fps={fps}
+            playing={playing}
+          />
+        )),
+      )}
+    </div>
+  );
 }
 
-function AudioClipPlayer({ track, clip, frame, fps, playing }: { track: AudioTrack; clip: AudioClip; frame: number; fps: number; playing: boolean }) {
-  const asset = useAssetUrl(clip.assetId), ref = useRef<HTMLAudioElement>(null), localFrame = frame - clip.startFrame;
+function AudioClipPlayer({
+  track,
+  clip,
+  frame,
+  fps,
+  playing,
+}: {
+  track: AudioTrack;
+  clip: AudioClip;
+  frame: number;
+  fps: number;
+  playing: boolean;
+}) {
+  const asset = useAssetUrl(clip.assetId),
+    ref = useRef<HTMLAudioElement>(null),
+    localFrame = frame - clip.startFrame;
   useEffect(() => {
     const audio = ref.current;
     if (!audio) return;
     const active = localFrame >= 0 && localFrame < clip.durationInFrames,
       desiredTime = (clip.sourceStartFrame + Math.max(0, localFrame)) / fps,
-      fadeIn = clip.fadeInFrames ? clamp(localFrame / clip.fadeInFrames, 0, 1) : 1,
-      fadeOut = clip.fadeOutFrames ? clamp((clip.durationInFrames - localFrame) / clip.fadeOutFrames, 0, 1) : 1;
+      fadeIn = clip.fadeInFrames
+        ? clamp(localFrame / clip.fadeInFrames, 0, 1)
+        : 1,
+      fadeOut = clip.fadeOutFrames
+        ? clamp((clip.durationInFrames - localFrame) / clip.fadeOutFrames, 0, 1)
+        : 1;
     audio.volume = clamp(track.volume * clip.volume * fadeIn * fadeOut, 0, 1);
     audio.muted = track.muted || clip.muted;
     if (!active || !playing) {
       audio.pause();
-      if (active && Math.abs(audio.currentTime - desiredTime) > 0.08) audio.currentTime = desiredTime;
+      if (active && Math.abs(audio.currentTime - desiredTime) > 0.08)
+        audio.currentTime = desiredTime;
     } else {
-      if (Math.abs(audio.currentTime - desiredTime) > 0.2) audio.currentTime = desiredTime;
+      if (Math.abs(audio.currentTime - desiredTime) > 0.2)
+        audio.currentTime = desiredTime;
       void audio.play().catch(() => undefined);
     }
   }, [clip, fps, frame, localFrame, playing, track.muted, track.volume]);
@@ -1929,31 +5613,133 @@ function ScenePreviewLayer({
   );
 }
 
-function MasterPlaybackVisual({ playback, videoProject, playing, onMediaFrameReady }: { playback: ReturnType<typeof resolveMasterFrame>; videoProject: VideoProject; playing: boolean; onMediaFrameReady?: (frame: number) => void }) {
-  const [modelReady, setModelReady] = useState<Record<string, boolean>>({}), [mediaReady, setMediaReady] = useState<Record<string, boolean>>({});
-  const timeline = sceneStarts(videoProject), upcoming = timeline.scenes[playback.sceneIndex + 1], upcomingStart = timeline.starts[playback.sceneIndex + 1],
-    shouldPreload = !playback.transition && upcoming && playback.masterFrame >= upcomingStart - videoProject.canvas.fps;
-  const incomingReady = !playback.transition || ((!playback.transition.to.composition.model?.assetId || modelReady[playback.transition.to.id]) && (playback.transition.to.composition.screen?.mediaType !== "video" || mediaReady[playback.transition.to.id])),
-    transitionStyles = playback.transition && incomingReady ? transitionLayerStyles(playback.transition) : { from: { opacity: 1 } as React.CSSProperties, to: { opacity: 0 } as React.CSSProperties },
+function MasterPlaybackVisual({
+  playback,
+  videoProject,
+  playing,
+  onMediaFrameReady,
+}: {
+  playback: ReturnType<typeof resolveMasterFrame>;
+  videoProject: VideoProject;
+  playing: boolean;
+  onMediaFrameReady?: (frame: number) => void;
+}) {
+  const [modelReady, setModelReady] = useState<Record<string, boolean>>({}),
+    [mediaReady, setMediaReady] = useState<Record<string, boolean>>({});
+  const timeline = sceneStarts(videoProject),
+    upcoming = timeline.scenes[playback.sceneIndex + 1],
+    upcomingStart = timeline.starts[playback.sceneIndex + 1],
+    shouldPreload =
+      !playback.transition &&
+      upcoming &&
+      playback.masterFrame >= upcomingStart - videoProject.canvas.fps;
+  const incomingReady =
+      !playback.transition ||
+      ((!playback.transition.to.composition.model?.assetId ||
+        modelReady[playback.transition.to.id]) &&
+        (playback.transition.to.composition.screen?.mediaType !== "video" ||
+          mediaReady[playback.transition.to.id])),
+    transitionStyles =
+      playback.transition && incomingReady
+        ? transitionLayerStyles(playback.transition)
+        : {
+            from: { opacity: 1 } as React.CSSProperties,
+            to: { opacity: 0 } as React.CSSProperties,
+          },
     entries = playback.transition
-    ? [
-        { scene: playback.transition.from, frame: playback.transition.from.sourceStartFrame + playback.transition.fromFrame, style: transitionStyles.from, live: true },
-        { scene: playback.transition.to, frame: playback.transition.to.sourceStartFrame + playback.transition.toFrame, style: transitionStyles.to, live: true },
-      ]
-    : [
-        { scene: playback.scene, frame: playback.scene.sourceStartFrame + playback.localFrame, style: undefined, live: true },
-        ...(shouldPreload ? [{ scene: upcoming, frame: upcoming.sourceStartFrame, style: { opacity: 0, pointerEvents: "none" } as React.CSSProperties, live: false }] : []),
-      ];
-  return <>{entries.map((entry) => <ScenePreviewLayer key={entry.scene.id} project={entry.scene.composition} frame={entry.frame} style={entry.style} playing={playing && entry.live} liveMediaPlayback onReady={() => setModelReady((current) => current[entry.scene.id] ? current : { ...current, [entry.scene.id]: true })} onMediaFrameReady={() => { setMediaReady((current) => current[entry.scene.id] ? current : { ...current, [entry.scene.id]: true }); if (entry.live) onMediaFrameReady?.(entry.frame); }} />)}</>;
+      ? [
+          {
+            scene: playback.transition.from,
+            frame:
+              playback.transition.from.sourceStartFrame +
+              playback.transition.fromFrame,
+            style: transitionStyles.from,
+            live: true,
+          },
+          {
+            scene: playback.transition.to,
+            frame:
+              playback.transition.to.sourceStartFrame +
+              playback.transition.toFrame,
+            style: transitionStyles.to,
+            live: true,
+          },
+        ]
+      : [
+          {
+            scene: playback.scene,
+            frame: playback.scene.sourceStartFrame + playback.localFrame,
+            style: undefined,
+            live: true,
+          },
+          ...(shouldPreload
+            ? [
+                {
+                  scene: upcoming,
+                  frame: upcoming.sourceStartFrame,
+                  style: {
+                    opacity: 0,
+                    pointerEvents: "none",
+                  } as React.CSSProperties,
+                  live: false,
+                },
+              ]
+            : []),
+        ];
+  return (
+    <>
+      {entries.map((entry) => (
+        <ScenePreviewLayer
+          key={entry.scene.id}
+          project={entry.scene.composition}
+          frame={entry.frame}
+          style={entry.style}
+          playing={playing && entry.live}
+          liveMediaPlayback
+          onReady={() =>
+            setModelReady((current) =>
+              current[entry.scene.id]
+                ? current
+                : { ...current, [entry.scene.id]: true },
+            )
+          }
+          onMediaFrameReady={() => {
+            setMediaReady((current) =>
+              current[entry.scene.id]
+                ? current
+                : { ...current, [entry.scene.id]: true },
+            );
+            if (entry.live) onMediaFrameReady?.(entry.frame);
+          }}
+        />
+      ))}
+    </>
+  );
 }
 
-function transitionLayerStyles(transition: NonNullable<ReturnType<typeof resolveMasterFrame>["transition"]>) {
-  const type = transition.from.transitionToNext.type, progress = transition.progress;
-  let from: React.CSSProperties = { opacity: 1 - progress }, to: React.CSSProperties = { opacity: progress };
-  if (type === "fade-black") { from = { opacity: Math.max(0, 1 - progress * 2) }; to = { opacity: Math.max(0, progress * 2 - 1) }; }
-  else if (type === "slide") { from = { transform: `translateX(${-progress * 100}%)` }; to = { transform: `translateX(${(1 - progress) * 100}%)` }; }
-  else if (type === "zoom") { from = { opacity: 1 - progress, transform: `scale(${1 + progress * 0.12})` }; to = { opacity: progress, transform: `scale(${0.88 + progress * 0.12})` }; }
-  else if (type === "blur") { from = { opacity: 1 - progress, filter: `blur(${progress * 18}px)` }; to = { opacity: progress, filter: `blur(${(1 - progress) * 18}px)` }; }
+function transitionLayerStyles(
+  transition: NonNullable<ReturnType<typeof resolveMasterFrame>["transition"]>,
+) {
+  const type = transition.from.transitionToNext.type,
+    progress = transition.progress;
+  let from: React.CSSProperties = { opacity: 1 - progress },
+    to: React.CSSProperties = { opacity: progress };
+  if (type === "fade-black") {
+    from = { opacity: Math.max(0, 1 - progress * 2) };
+    to = { opacity: Math.max(0, progress * 2 - 1) };
+  } else if (type === "slide") {
+    from = { transform: `translateX(${-progress * 100}%)` };
+    to = { transform: `translateX(${(1 - progress) * 100}%)` };
+  } else if (type === "zoom") {
+    from = {
+      opacity: 1 - progress,
+      transform: `scale(${1 + progress * 0.12})`,
+    };
+    to = { opacity: progress, transform: `scale(${0.88 + progress * 0.12})` };
+  } else if (type === "blur") {
+    from = { opacity: 1 - progress, filter: `blur(${progress * 18}px)` };
+    to = { opacity: progress, filter: `blur(${(1 - progress) * 18}px)` };
+  }
   return { from, to };
 }
 
@@ -1964,7 +5750,9 @@ function TransitionPreview({
 }) {
   const fromFrame = transition.from.sourceStartFrame + transition.fromFrame,
     toFrame = transition.to.sourceStartFrame + transition.toFrame;
-  const styles = transitionLayerStyles(transition), fromStyle = styles.from, toStyle = styles.to;
+  const styles = transitionLayerStyles(transition),
+    fromStyle = styles.from,
+    toStyle = styles.to;
   return (
     <>
       <ScenePreviewLayer
@@ -3789,55 +7577,255 @@ function KeyframePropertyRow({
   );
 }
 
-function MasterExportDialog({ videoProject, onClose }: { videoProject: VideoProject; onClose: () => void }) {
-  const stage = useRef<HTMLDivElement>(null), cancelled = useRef(false), startedAt = useRef(0),
-    [masterRenderFrame, setMasterRenderFrame] = useState(0), [outputFrame, setOutputFrame] = useState(0),
-    [progress, setProgress] = useState(0), [status, setStatus] = useState<"idle" | "rendering" | "done" | "error">("idle"),
-    [error, setError] = useState(""), [downloadUrl, setDownloadUrl] = useState(""), [mediaReadyFrame, setMediaReadyFrame] = useState(-1),
-    [resolution, setResolution] = useState<"720p" | "1080p">("1080p"), [exportFps, setExportFps] = useState<30 | 60>(60);
-  const normalized = { ...videoProject, scenes: videoProject.scenes.map((scene) => ({ ...scene, transitionToNext: scene.transitionToNext ?? { type: "cut" as const, durationInFrames: 15 } })) },
-    timeline = sceneStarts(normalized), totalSourceFrames = timeline.totalFrames,
-    width = resolution === "1080p" ? 1920 : 1280, height = resolution === "1080p" ? 1080 : 720,
-    durationSeconds = totalSourceFrames / videoProject.canvas.fps, totalFrames = Math.round(durationSeconds * exportFps),
-    resolved = resolveMasterFrame(normalized, masterRenderFrame), composition = resolved.scene.composition,
+function MasterExportDialog({
+  videoProject,
+  onClose,
+}: {
+  videoProject: VideoProject;
+  onClose: () => void;
+}) {
+  const stage = useRef<HTMLDivElement>(null),
+    cancelled = useRef(false),
+    startedAt = useRef(0),
+    [masterRenderFrame, setMasterRenderFrame] = useState(0),
+    [outputFrame, setOutputFrame] = useState(0),
+    [progress, setProgress] = useState(0),
+    [status, setStatus] = useState<"idle" | "rendering" | "done" | "error">(
+      "idle",
+    ),
+    [error, setError] = useState(""),
+    [downloadUrl, setDownloadUrl] = useState(""),
+    [mediaReadyFrame, setMediaReadyFrame] = useState(-1),
+    [resolution, setResolution] = useState<"720p" | "1080p">("1080p"),
+    [exportFps, setExportFps] = useState<30 | 60>(60);
+  const normalized = {
+      ...videoProject,
+      scenes: videoProject.scenes.map((scene) => ({
+        ...scene,
+        transitionToNext: scene.transitionToNext ?? {
+          type: "cut" as const,
+          durationInFrames: 15,
+        },
+      })),
+    },
+    timeline = sceneStarts(normalized),
+    rangeStart = normalized.workArea.enabled
+      ? normalized.workArea.startFrame
+      : 0,
+    rangeEnd = normalized.workArea.enabled
+      ? normalized.workArea.endFrame
+      : timeline.totalFrames,
+    totalSourceFrames = rangeEnd - rangeStart,
+    width = resolution === "1080p" ? 1920 : 1280,
+    height = resolution === "1080p" ? 1080 : 720,
+    durationSeconds = totalSourceFrames / videoProject.canvas.fps,
+    totalFrames = Math.round(durationSeconds * exportFps),
+    resolved = resolveMasterFrame(normalized, masterRenderFrame),
+    composition = resolved.scene.composition,
     localRenderFrame = resolved.scene.sourceStartFrame + resolved.localFrame,
-    eta = progress > 0 ? Math.max(0, ((performance.now() - startedAt.current) / 1000) * (100 - progress) / progress) : 0,
-    exportTracks = buildUnifiedTimelineTracks(normalized.scenes, normalized.audioTracks, normalized.globalOverlays, normalized.timelineTracks);
-  useEffect(() => () => { cancelled.current = true; if (downloadUrl) URL.revokeObjectURL(downloadUrl); }, [downloadUrl]);
+    eta =
+      progress > 0
+        ? Math.max(
+            0,
+            (((performance.now() - startedAt.current) / 1000) *
+              (100 - progress)) /
+              progress,
+          )
+        : 0,
+    exportTracks = buildUnifiedTimelineTracks(
+      normalized.scenes,
+      normalized.audioTracks,
+      normalized.globalOverlays,
+      normalized.timelineTracks,
+    );
+  useEffect(
+    () => () => {
+      cancelled.current = true;
+      if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+    },
+    [downloadUrl],
+  );
   const start = async () => {
     if (!stage.current) return;
-    cancelled.current = false; startedAt.current = performance.now(); setStatus("rendering"); setError(""); setProgress(0); setDownloadUrl("");
+    cancelled.current = false;
+    startedAt.current = performance.now();
+    setStatus("rendering");
+    setError("");
+    setProgress(0);
+    setDownloadUrl("");
     try {
-      const blob = await renderVideoProjectMp4(normalized, stage.current, { width, height, fps: exportFps }, (source, output, total) => {
-        setMasterRenderFrame(source); setOutputFrame(output); setProgress((output / total) * 100);
-      }, () => cancelled.current);
+      const blob = await renderVideoProjectMp4(
+        normalized,
+        stage.current,
+        {
+          width,
+          height,
+          fps: exportFps,
+          startFrame: rangeStart,
+          endFrame: rangeEnd,
+        },
+        (source, output, total) => {
+          setMasterRenderFrame(source);
+          setOutputFrame(output);
+          setProgress((output / total) * 100);
+        },
+        () => cancelled.current,
+      );
       if (cancelled.current) throw new Error("Export cancelled.");
-      setDownloadUrl(URL.createObjectURL(blob)); setProgress(100); setStatus("done");
+      setDownloadUrl(URL.createObjectURL(blob));
+      setProgress(100);
+      setStatus("done");
     } catch (reason) {
-      if (cancelled.current) { setStatus("idle"); return; }
-      setError(reason instanceof Error ? reason.message : "The full video could not be rendered."); setStatus("error");
+      if (cancelled.current) {
+        setStatus("idle");
+        return;
+      }
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "The full video could not be rendered.",
+      );
+      setStatus("error");
     }
   };
   const fileName = `${videoProject.name.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "renderlaunch-video"}.mp4`;
-  return <div className="exportBackdrop" role="dialog" aria-modal="true">
-    <section className="exportDialog">
-      <div className="exportHead"><div><small>MASTER TIMELINE RENDER</small><h2>Export Full Video</h2></div><button aria-label="Close export" disabled={status === "rendering"} onClick={onClose}><I.X /></button></div>
-      <div className="renderSettings">
-        <label>Resolution<select value={resolution} disabled={status === "rendering"} onChange={(event) => setResolution(event.target.value as "720p" | "1080p")}><option value="1080p">1920 × 1080 (Full HD)</option><option value="720p">1280 × 720 (Draft)</option></select></label>
-        <label>Frame rate<select value={exportFps} disabled={status === "rendering"} onChange={(event) => setExportFps(Number(event.target.value) as 30 | 60)}><option value="60">60 FPS</option><option value="30">30 FPS</option></select></label>
-        <span>Format <b>H.264 + AAC MP4</b></span><span>Duration <b>{durationSeconds.toFixed(1)}s</b></span>
-      </div>
-      {status === "rendering" && <div className="renderProgress"><div><i style={{ width: `${progress}%` }} /></div><span>Rendering frame {Math.min(outputFrame + 1, totalFrames)} of {totalFrames} · about {Math.ceil(eta)}s remaining</span><b>{Math.round(progress)}%</b></div>}
-      {status === "error" && <div className="renderError"><I.CircleAlert /><div><b>Export failed</b><span>{error}</span></div></div>}
-      {status === "done" && <><div className="renderDone"><I.CircleCheck /><div><b>Your full video is ready</b><span>{fileName}</span></div></div>{downloadUrl && <video className="exportVideoPreview" src={downloadUrl} controls playsInline />}</>}
-      <div className="exportActions">{status === "rendering" ? <button onClick={() => { cancelled.current = true; }}>Cancel render</button> : <button onClick={onClose}>Cancel</button>}{status === "done" && downloadUrl ? <a className="primary" href={downloadUrl} download={fileName}><I.Download /> Download MP4</a> : <button className="primary" onClick={() => void start()}><I.Clapperboard /> {status === "error" ? "Try Again" : "Start Rendering"}</button>}</div>
-    </section>
-    <div className="renderStage" aria-hidden="true" style={{ width, height }}>
-      <div ref={stage} data-media-frame={mediaReadyFrame} className={`renderComposition ${bgClass(composition.background.preset)}`} style={{ ...backgroundStyle(composition, localRenderFrame), width, height }}>
-        <MasterPreviewCompositor playback={resolved} videoProject={normalized} tracks={exportTracks} frame={masterRenderFrame} playing={false} onMediaFrameReady={setMediaReadyFrame} />
+  return (
+    <div className="exportBackdrop" role="dialog" aria-modal="true">
+      <section className="exportDialog">
+        <div className="exportHead">
+          <div>
+            <small>MASTER TIMELINE RENDER</small>
+            <h2>Export Full Video</h2>
+          </div>
+          <button
+            aria-label="Close export"
+            disabled={status === "rendering"}
+            onClick={onClose}
+          >
+            <I.X />
+          </button>
+        </div>
+        <div className="renderSettings">
+          <label>
+            Resolution
+            <select
+              value={resolution}
+              disabled={status === "rendering"}
+              onChange={(event) =>
+                setResolution(event.target.value as "720p" | "1080p")
+              }
+            >
+              <option value="1080p">1920 × 1080 (Full HD)</option>
+              <option value="720p">1280 × 720 (Draft)</option>
+            </select>
+          </label>
+          <label>
+            Frame rate
+            <select
+              value={exportFps}
+              disabled={status === "rendering"}
+              onChange={(event) =>
+                setExportFps(Number(event.target.value) as 30 | 60)
+              }
+            >
+              <option value="60">60 FPS</option>
+              <option value="30">30 FPS</option>
+            </select>
+          </label>
+          <span>
+            Format <b>H.264 + AAC MP4</b>
+          </span>
+          <span>
+            Duration <b>{durationSeconds.toFixed(1)}s</b>
+          </span>
+        </div>
+        {status === "rendering" && (
+          <div className="renderProgress">
+            <div>
+              <i style={{ width: `${progress}%` }} />
+            </div>
+            <span>
+              Rendering frame {Math.min(outputFrame + 1, totalFrames)} of{" "}
+              {totalFrames} · about {Math.ceil(eta)}s remaining
+            </span>
+            <b>{Math.round(progress)}%</b>
+          </div>
+        )}
+        {status === "error" && (
+          <div className="renderError">
+            <I.CircleAlert />
+            <div>
+              <b>Export failed</b>
+              <span>{error}</span>
+            </div>
+          </div>
+        )}
+        {status === "done" && (
+          <>
+            <div className="renderDone">
+              <I.CircleCheck />
+              <div>
+                <b>Your full video is ready</b>
+                <span>{fileName}</span>
+              </div>
+            </div>
+            {downloadUrl && (
+              <video
+                className="exportVideoPreview"
+                src={downloadUrl}
+                controls
+                playsInline
+              />
+            )}
+          </>
+        )}
+        <div className="exportActions">
+          {status === "rendering" ? (
+            <button
+              onClick={() => {
+                cancelled.current = true;
+              }}
+            >
+              Cancel render
+            </button>
+          ) : (
+            <button onClick={onClose}>Cancel</button>
+          )}
+          {status === "done" && downloadUrl ? (
+            <a className="primary" href={downloadUrl} download={fileName}>
+              <I.Download /> Download MP4
+            </a>
+          ) : (
+            <button className="primary" onClick={() => void start()}>
+              <I.Clapperboard />{" "}
+              {status === "error" ? "Try Again" : "Start Rendering"}
+            </button>
+          )}
+        </div>
+      </section>
+      <div className="renderStage" aria-hidden="true" style={{ width, height }}>
+        <div
+          ref={stage}
+          data-media-frame={mediaReadyFrame}
+          className={`renderComposition ${bgClass(composition.background.preset)}`}
+          style={{
+            ...backgroundStyle(composition, localRenderFrame),
+            width,
+            height,
+          }}
+        >
+          <MasterPreviewCompositor
+            playback={resolved}
+            videoProject={normalized}
+            tracks={exportTracks}
+            frame={masterRenderFrame}
+            playing={false}
+            onMediaFrameReady={setMediaReadyFrame}
+          />
+        </div>
       </div>
     </div>
-  </div>;
+  );
 }
 
 function ExportDialog({
@@ -4071,43 +8059,170 @@ function ExportDialog({
 async function renderVideoProjectMp4(
   videoProject: VideoProject,
   stage: HTMLDivElement,
-  settings: { width: number; height: number; fps: 30 | 60 },
-  onFrame: (sourceFrame: number, outputFrame: number, totalFrames: number) => void,
+  settings: {
+    width: number;
+    height: number;
+    fps: 30 | 60;
+    startFrame?: number;
+    endFrame?: number;
+  },
+  onFrame: (
+    sourceFrame: number,
+    outputFrame: number,
+    totalFrames: number,
+  ) => void,
   isCancelled: () => boolean,
 ) {
-  if (!("VideoEncoder" in window) || !("VideoFrame" in window)) throw new Error("This browser cannot encode H.264 locally. Use the latest Chrome or Edge with hardware acceleration enabled.");
+  if (!("VideoEncoder" in window) || !("VideoFrame" in window))
+    throw new Error(
+      "This browser cannot encode H.264 locally. Use the latest Chrome or Edge with hardware acceleration enabled.",
+    );
   await validateVideoProjectAssets(videoProject);
-  if (resolveMasterFrame(videoProject, 0).scene.composition.model?.assetId) await waitForMasterCanvas(stage, isCancelled);
-  await Promise.all([...stage.querySelectorAll("img")].map((image) => image.complete ? Promise.resolve() : new Promise<void>((resolve, reject) => { image.addEventListener("load", () => resolve(), { once: true }); image.addEventListener("error", () => reject(new Error(`Image ${image.alt || "asset"} did not load.`)), { once: true }); })));
+  if (resolveMasterFrame(videoProject, 0).scene.composition.model?.assetId)
+    await waitForMasterCanvas(stage, isCancelled);
+  await Promise.all(
+    [...stage.querySelectorAll("img")].map((image) =>
+      image.complete
+        ? Promise.resolve()
+        : new Promise<void>((resolve, reject) => {
+            image.addEventListener("load", () => resolve(), { once: true });
+            image.addEventListener(
+              "error",
+              () =>
+                reject(
+                  new Error(`Image ${image.alt || "asset"} did not load.`),
+                ),
+              { once: true },
+            );
+          }),
+    ),
+  );
   await document.fonts.ready;
-  const timeline = sceneStarts(videoProject), durationSeconds = timeline.totalFrames / videoProject.canvas.fps,
-    totalFrames = Math.round(durationSeconds * settings.fps), hasAudio = videoProject.audioTracks.some((track) => track.clips.length && !track.muted),
-    mixedAudio = hasAudio ? await mixProjectAudio(videoProject, durationSeconds, isCancelled) : undefined,
-    { getFontEmbedCSS, toCanvas } = await import("html-to-image"), { ArrayBufferTarget, Muxer } = await import("mp4-muxer"),
-    fontEmbedCSS = await getFontEmbedCSS(stage), videoConfig: VideoEncoderConfig = { codec: "avc1.42002a", width: settings.width, height: settings.height, bitrate: settings.width >= 1920 ? 28_000_000 : 10_000_000, bitrateMode: "variable", framerate: settings.fps, avc: { format: "avc" } },
+  const timeline = sceneStarts(videoProject),
+    startFrame = settings.startFrame ?? 0,
+    endFrame = settings.endFrame ?? timeline.totalFrames,
+    durationSeconds = (endFrame - startFrame) / videoProject.canvas.fps,
+    totalFrames = Math.round(durationSeconds * settings.fps),
+    hasAudio =
+      videoProject.audioTracks.some(
+        (track) => track.clips.length && !track.muted,
+      ) ||
+      videoProject.timelineTracks.some(
+        (track) =>
+          track.type === "video" &&
+          track.visible &&
+          !track.muted &&
+          track.clips.some(
+            (clip) => clip.type === "video" && clip.referenceType === "asset",
+          ),
+      ),
+    mixedAudio = hasAudio
+      ? await mixProjectAudio(
+          videoProject,
+          durationSeconds,
+          startFrame / videoProject.canvas.fps,
+          isCancelled,
+        )
+      : undefined,
+    { getFontEmbedCSS, toCanvas } = await import("html-to-image"),
+    { ArrayBufferTarget, Muxer } = await import("mp4-muxer"),
+    fontEmbedCSS = await getFontEmbedCSS(stage),
+    videoConfig: VideoEncoderConfig = {
+      codec: "avc1.42002a",
+      width: settings.width,
+      height: settings.height,
+      bitrate: settings.width >= 1920 ? 28_000_000 : 10_000_000,
+      bitrateMode: "variable",
+      framerate: settings.fps,
+      avc: { format: "avc" },
+    },
     support = await VideoEncoder.isConfigSupported(videoConfig);
-  if (!support.supported) throw new Error("H.264 encoding is unavailable on this device. Enable browser hardware acceleration or try Chrome/Edge.");
-  const target = new ArrayBufferTarget(), muxer = new Muxer({ target, video: { codec: "avc", width: settings.width, height: settings.height, frameRate: settings.fps }, ...(mixedAudio ? { audio: { codec: "aac" as const, numberOfChannels: mixedAudio.numberOfChannels, sampleRate: mixedAudio.sampleRate } } : {}), fastStart: "in-memory", firstTimestampBehavior: "offset" });
+  if (!support.supported)
+    throw new Error(
+      "H.264 encoding is unavailable on this device. Enable browser hardware acceleration or try Chrome/Edge.",
+    );
+  const target = new ArrayBufferTarget(),
+    muxer = new Muxer({
+      target,
+      video: {
+        codec: "avc",
+        width: settings.width,
+        height: settings.height,
+        frameRate: settings.fps,
+      },
+      ...(mixedAudio
+        ? {
+            audio: {
+              codec: "aac" as const,
+              numberOfChannels: mixedAudio.numberOfChannels,
+              sampleRate: mixedAudio.sampleRate,
+            },
+          }
+        : {}),
+      fastStart: "in-memory",
+      firstTimestampBehavior: "offset",
+    });
   let encoderFailure: Error | undefined;
-  const encoder = new VideoEncoder({ output: (chunk, metadata) => muxer.addVideoChunk(chunk, metadata), error: (reason) => { encoderFailure = reason; } });
+  const encoder = new VideoEncoder({
+    output: (chunk, metadata) => muxer.addVideoChunk(chunk, metadata),
+    error: (reason) => {
+      encoderFailure = reason;
+    },
+  });
   encoder.configure(videoConfig);
   let previousSceneId = "";
   for (let outputFrame = 0; outputFrame < totalFrames; outputFrame += 1) {
     if (isCancelled()) break;
-    const sourceFrame = (outputFrame / settings.fps) * videoProject.canvas.fps, resolved = resolveMasterFrame(videoProject, sourceFrame);
+    const sourceFrame =
+        startFrame + (outputFrame / settings.fps) * videoProject.canvas.fps,
+      resolved = resolveMasterFrame(videoProject, sourceFrame);
     onFrame(sourceFrame, outputFrame, totalFrames);
     await nextPaint();
-    if (resolved.scene.id !== previousSceneId) { previousSceneId = resolved.scene.id; if (resolved.scene.composition.model?.assetId) await waitForMasterCanvas(stage, isCancelled); }
-    if (!resolved.transition && resolved.scene.composition.screen?.mediaType === "video") await waitForMediaFrame(stage, resolved.scene.sourceStartFrame + resolved.localFrame, isCancelled);
-    const canvas = await toCanvas(stage, { width: settings.width, height: settings.height, canvasWidth: settings.width, canvasHeight: settings.height, pixelRatio: 1, skipFonts: false, fontEmbedCSS, cacheBust: false });
-    if (outputFrame === 0 && isCapturedFrameBlank(canvas)) throw new Error("The first master frame is blank. Wait for the scene assets to load, then retry.");
-    const videoFrame = new VideoFrame(canvas, { timestamp: Math.round((outputFrame / settings.fps) * 1_000_000), duration: Math.round(1_000_000 / settings.fps) });
-    encoder.encode(videoFrame, { keyFrame: outputFrame % (settings.fps * 2) === 0 }); videoFrame.close();
+    if (resolved.scene.id !== previousSceneId) {
+      previousSceneId = resolved.scene.id;
+      if (resolved.scene.composition.model?.assetId)
+        await waitForMasterCanvas(stage, isCancelled);
+    }
+    if (
+      !resolved.transition &&
+      resolved.scene.composition.screen?.mediaType === "video"
+    )
+      await waitForMediaFrame(
+        stage,
+        resolved.scene.sourceStartFrame + resolved.localFrame,
+        isCancelled,
+      );
+    const canvas = await toCanvas(stage, {
+      width: settings.width,
+      height: settings.height,
+      canvasWidth: settings.width,
+      canvasHeight: settings.height,
+      pixelRatio: 1,
+      skipFonts: false,
+      fontEmbedCSS,
+      cacheBust: false,
+    });
+    if (outputFrame === 0 && isCapturedFrameBlank(canvas))
+      throw new Error(
+        "The first master frame is blank. Wait for the scene assets to load, then retry.",
+      );
+    const videoFrame = new VideoFrame(canvas, {
+      timestamp: Math.round((outputFrame / settings.fps) * 1_000_000),
+      duration: Math.round(1_000_000 / settings.fps),
+    });
+    encoder.encode(videoFrame, {
+      keyFrame: outputFrame % (settings.fps * 2) === 0,
+    });
+    videoFrame.close();
     if (encoder.encodeQueueSize > 8) await encoder.flush();
     if (encoderFailure) throw encoderFailure;
   }
-  if (isCancelled()) { encoder.close(); throw new Error("Export cancelled."); }
-  await encoder.flush(); encoder.close();
+  if (isCancelled()) {
+    encoder.close();
+    throw new Error("Export cancelled.");
+  }
+  await encoder.flush();
+  encoder.close();
   if (mixedAudio) await encodeMixedAudio(mixedAudio, muxer, isCancelled);
   if (isCancelled()) throw new Error("Export cancelled.");
   muxer.finalize();
@@ -4115,66 +8230,213 @@ async function renderVideoProjectMp4(
 }
 
 async function validateVideoProjectAssets(videoProject: VideoProject) {
-  for (const scene of videoProject.scenes) await validateExportAssets(scene.composition);
+  for (const scene of videoProject.scenes)
+    await validateExportAssets(scene.composition);
   const assets = [
-    ...videoProject.audioTracks.flatMap((track) => track.clips.map((clip) => ({ id: clip.assetId, label: clip.fileName }))),
-    ...videoProject.globalOverlays.filter((overlay) => overlay.assetId).map((overlay) => ({ id: overlay.assetId!, label: overlay.name })),
+    ...videoProject.audioTracks.flatMap((track) =>
+      track.clips.map((clip) => ({ id: clip.assetId, label: clip.fileName })),
+    ),
+    ...videoProject.globalOverlays
+      .filter((overlay) => overlay.assetId)
+      .map((overlay) => ({ id: overlay.assetId!, label: overlay.name })),
   ];
-  for (const asset of assets) if (!(await loadAssetBlob(asset.id))) throw new Error(`${asset.label} is missing from local storage. Attach it again before exporting.`);
+  for (const asset of assets)
+    if (!(await loadAssetBlob(asset.id)))
+      throw new Error(
+        `${asset.label} is missing from local storage. Attach it again before exporting.`,
+      );
 }
 
-async function waitForMasterCanvas(stage: HTMLDivElement, isCancelled: () => boolean) {
+async function waitForMasterCanvas(
+  stage: HTMLDivElement,
+  isCancelled: () => boolean,
+) {
   const deadline = performance.now() + 15_000;
   while (!stage.querySelector(".threeCanvas canvas")) {
     if (isCancelled()) throw new Error("Export cancelled.");
-    if (performance.now() > deadline) throw new Error("A 3D scene did not become ready during the master render.");
+    if (performance.now() > deadline)
+      throw new Error(
+        "A 3D scene did not become ready during the master render.",
+      );
     await new Promise((resolve) => window.setTimeout(resolve, 50));
   }
   await nextPaint();
 }
 
-async function mixProjectAudio(videoProject: VideoProject, durationSeconds: number, isCancelled: () => boolean) {
-  const sampleRate = 48_000, channels = 2, context = new OfflineAudioContext(channels, Math.ceil(durationSeconds * sampleRate), sampleRate), decodeContext = new AudioContext();
+async function mixProjectAudio(
+  videoProject: VideoProject,
+  durationSeconds: number,
+  rangeStartSeconds: number,
+  isCancelled: () => boolean,
+) {
+  const sampleRate = 48_000,
+    channels = 2,
+    context = new OfflineAudioContext(
+      channels,
+      Math.ceil(durationSeconds * sampleRate),
+      sampleRate,
+    ),
+    decodeContext = new AudioContext();
   try {
-    for (const track of videoProject.audioTracks) for (const clip of track.clips) {
-      if (isCancelled()) throw new Error("Export cancelled.");
-      if (track.muted || clip.muted) continue;
-      const blob = await loadAssetBlob(clip.assetId); if (!blob) continue;
-      const buffer = await decodeContext.decodeAudioData(await blob.arrayBuffer()), source = context.createBufferSource(), gain = context.createGain(),
-        start = clip.startFrame / videoProject.canvas.fps, offset = clip.sourceStartFrame / videoProject.canvas.fps,
-        duration = Math.min(clip.durationInFrames / videoProject.canvas.fps, Math.max(0, buffer.duration - offset), Math.max(0, durationSeconds - start)),
-        baseGain = clamp(track.volume * clip.volume, 0, 2), fadeIn = Math.min(duration, clip.fadeInFrames / videoProject.canvas.fps), fadeOut = Math.min(duration, clip.fadeOutFrames / videoProject.canvas.fps);
-      if (duration <= 0) continue;
-      source.buffer = buffer; source.connect(gain); gain.connect(context.destination);
-      gain.gain.setValueAtTime(fadeIn ? 0 : baseGain, start);
-      if (fadeIn) gain.gain.linearRampToValueAtTime(baseGain, start + fadeIn);
-      gain.gain.setValueAtTime(baseGain, Math.max(start + fadeIn, start + duration - fadeOut));
-      if (fadeOut) gain.gain.linearRampToValueAtTime(0, start + duration);
-      source.start(start, offset, duration);
+    for (const track of videoProject.audioTracks)
+      for (const clip of track.clips) {
+        if (isCancelled()) throw new Error("Export cancelled.");
+        if (track.muted || clip.muted) continue;
+        const blob = await loadAssetBlob(clip.assetId!);
+        if (!blob) continue;
+        const buffer = await decodeContext.decodeAudioData(
+            await blob.arrayBuffer(),
+          ),
+          source = context.createBufferSource(),
+          gain = context.createGain(),
+          clipStart = clip.startFrame / videoProject.canvas.fps,
+          skipped = Math.max(0, rangeStartSeconds - clipStart),
+          start = Math.max(0, clipStart - rangeStartSeconds),
+          offset = clip.sourceStartFrame / videoProject.canvas.fps + skipped,
+          duration = Math.min(
+            clip.durationInFrames / videoProject.canvas.fps - skipped,
+            Math.max(0, buffer.duration - offset),
+            Math.max(0, durationSeconds - start),
+          ),
+          baseGain = clamp(track.volume * clip.volume, 0, 2),
+          fadeIn = Math.min(
+            duration,
+            clip.fadeInFrames / videoProject.canvas.fps,
+          ),
+          fadeOut = Math.min(
+            duration,
+            clip.fadeOutFrames / videoProject.canvas.fps,
+          );
+        if (duration <= 0) continue;
+        source.buffer = buffer;
+        source.connect(gain);
+        gain.connect(context.destination);
+        gain.gain.setValueAtTime(fadeIn ? 0 : baseGain, start);
+        if (fadeIn) gain.gain.linearRampToValueAtTime(baseGain, start + fadeIn);
+        gain.gain.setValueAtTime(
+          baseGain,
+          Math.max(start + fadeIn, start + duration - fadeOut),
+        );
+        if (fadeOut) gain.gain.linearRampToValueAtTime(0, start + duration);
+        source.start(start, offset, duration);
+      }
+    const timelineTracks = buildUnifiedTimelineTracks(
+        videoProject.scenes,
+        videoProject.audioTracks,
+        videoProject.globalOverlays,
+        videoProject.timelineTracks,
+      ),
+      linkedAudioAssetIds = new Set(
+        videoProject.audioTracks.flatMap((track) =>
+          track.clips.map((clip) => clip.assetId),
+        ),
+      );
+    for (const track of timelineTracks.filter(
+      (item) => item.type === "video" && item.visible && !item.muted,
+    )) {
+      for (const clip of track.clips.filter(
+        (item) =>
+          item.type === "video" &&
+          item.referenceType === "asset" &&
+          item.assetId &&
+          !linkedAudioAssetIds.has(item.assetId),
+      )) {
+        if (isCancelled()) throw new Error("Export cancelled.");
+        const blob = await loadAssetBlob(clip.assetId!);
+        if (!blob) continue;
+        try {
+          const buffer = await decodeContext.decodeAudioData(
+              await blob.arrayBuffer(),
+            ),
+            source = context.createBufferSource(),
+            gain = context.createGain(),
+            clipStart = clip.startFrame / videoProject.canvas.fps,
+            skipped = Math.max(0, rangeStartSeconds - clipStart),
+            start = Math.max(0, clipStart - rangeStartSeconds),
+            offset = clip.sourceStartFrame / videoProject.canvas.fps + skipped,
+            duration = Math.min(
+              clip.durationInFrames / videoProject.canvas.fps - skipped,
+              Math.max(0, buffer.duration - offset),
+              Math.max(0, durationSeconds - start),
+            );
+          if (duration <= 0) continue;
+          source.buffer = buffer;
+          source.connect(gain);
+          gain.connect(context.destination);
+          gain.gain.setValueAtTime(clamp(track.volume, 0, 2), start);
+          source.start(start, offset, duration);
+        } catch {
+          // Video assets without a decodable audio stream remain valid visual clips.
+        }
+      }
     }
     return await context.startRendering();
-  } finally { void decodeContext.close(); }
+  } finally {
+    void decodeContext.close();
+  }
 }
 
-async function encodeMixedAudio(buffer: AudioBuffer, muxer: { addAudioChunk: (chunk: EncodedAudioChunk, metadata?: EncodedAudioChunkMetadata) => void }, isCancelled: () => boolean) {
-  if (!("AudioEncoder" in window) || !("AudioData" in window)) throw new Error("This browser cannot encode the master audio track. Use the latest Chrome or Edge.");
-  const config: AudioEncoderConfig = { codec: "mp4a.40.2", sampleRate: buffer.sampleRate, numberOfChannels: buffer.numberOfChannels, bitrate: 192_000 }, support = await AudioEncoder.isConfigSupported(config);
-  if (!support.supported) throw new Error("AAC audio encoding is unavailable in this browser.");
+async function encodeMixedAudio(
+  buffer: AudioBuffer,
+  muxer: {
+    addAudioChunk: (
+      chunk: EncodedAudioChunk,
+      metadata?: EncodedAudioChunkMetadata,
+    ) => void;
+  },
+  isCancelled: () => boolean,
+) {
+  if (!("AudioEncoder" in window) || !("AudioData" in window))
+    throw new Error(
+      "This browser cannot encode the master audio track. Use the latest Chrome or Edge.",
+    );
+  const config: AudioEncoderConfig = {
+      codec: "mp4a.40.2",
+      sampleRate: buffer.sampleRate,
+      numberOfChannels: buffer.numberOfChannels,
+      bitrate: 192_000,
+    },
+    support = await AudioEncoder.isConfigSupported(config);
+  if (!support.supported)
+    throw new Error("AAC audio encoding is unavailable in this browser.");
   let failure: Error | undefined;
-  const encoder = new AudioEncoder({ output: (chunk, metadata) => muxer.addAudioChunk(chunk, metadata), error: (reason) => { failure = reason; } });
+  const encoder = new AudioEncoder({
+    output: (chunk, metadata) => muxer.addAudioChunk(chunk, metadata),
+    error: (reason) => {
+      failure = reason;
+    },
+  });
   encoder.configure(config);
   const blockSize = 1024;
   for (let start = 0; start < buffer.length; start += blockSize) {
     if (isCancelled()) break;
-    const frames = Math.min(blockSize, buffer.length - start), data = new Float32Array(frames * buffer.numberOfChannels);
-    for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) data.set(buffer.getChannelData(channel).subarray(start, start + frames), channel * frames);
-    const audioData = new AudioData({ format: "f32-planar", sampleRate: buffer.sampleRate, numberOfFrames: frames, numberOfChannels: buffer.numberOfChannels, timestamp: Math.round((start / buffer.sampleRate) * 1_000_000), data });
-    encoder.encode(audioData); audioData.close();
+    const frames = Math.min(blockSize, buffer.length - start),
+      data = new Float32Array(frames * buffer.numberOfChannels);
+    for (let channel = 0; channel < buffer.numberOfChannels; channel += 1)
+      data.set(
+        buffer.getChannelData(channel).subarray(start, start + frames),
+        channel * frames,
+      );
+    const audioData = new AudioData({
+      format: "f32-planar",
+      sampleRate: buffer.sampleRate,
+      numberOfFrames: frames,
+      numberOfChannels: buffer.numberOfChannels,
+      timestamp: Math.round((start / buffer.sampleRate) * 1_000_000),
+      data,
+    });
+    encoder.encode(audioData);
+    audioData.close();
     if (encoder.encodeQueueSize > 20) await encoder.flush();
     if (failure) throw failure;
   }
-  if (isCancelled()) { encoder.close(); return; }
-  await encoder.flush(); encoder.close(); if (failure) throw failure;
+  if (isCancelled()) {
+    encoder.close();
+    return;
+  }
+  await encoder.flush();
+  encoder.close();
+  if (failure) throw failure;
 }
 
 async function renderProjectMp4(
@@ -5457,7 +9719,7 @@ function LightingInspector({
           <input
             type="range"
             min="0"
-            max="4"
+            max="32"
             step=".05"
             value={lighting.fillIntensity}
             onChange={(e) =>
