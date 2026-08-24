@@ -2107,6 +2107,14 @@ header > .icon {
   color: #087ef5;
   filter: drop-shadow(0 0 4px #087ef588);
 }
+.keyframeMarquee {
+  position: absolute;
+  z-index: 8;
+  pointer-events: none;
+  border: 1px solid #087ef5;
+  background: #087ef526;
+  box-shadow: 0 0 0 1px #ffffff55 inset;
+}
 .timeHead > .autoKey {
   width: auto;
   padding: 0 10px;

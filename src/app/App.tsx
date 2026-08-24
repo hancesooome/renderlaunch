@@ -1260,12 +1260,18 @@ function Timeline({
   onSelect: (id: string) => void;
   onAutoKey: (enabled: boolean) => void;
 }) {
+  type KeyframeSelection = { trackId: string; keyframeId: string };
   const duration = project.canvas.durationInFrames,
     seconds = duration / project.canvas.fps,
     [zoom, setZoom] = useState(1),
-    [selectedKeyframe, setSelectedKeyframe] = useState<{
-      trackId: string;
-      keyframeId: string;
+    [selectedKeyframes, setSelectedKeyframes] = useState<KeyframeSelection[]>(
+      [],
+    ),
+    [marquee, setMarquee] = useState<{
+      left: number;
+      top: number;
+      width: number;
+      height: number;
     }>(),
     ticks = useMemo(
       () =>
@@ -1275,7 +1281,8 @@ function Timeline({
         ),
       [seconds, zoom],
     );
-  const selectedTrack = project.keyframeTracks.find(
+  const selectedKeyframe = selectedKeyframes[selectedKeyframes.length - 1],
+    selectedTrack = project.keyframeTracks.find(
       (track) => track.id === selectedKeyframe?.trackId,
     ),
     selectedKey = selectedTrack?.keyframes.find(
@@ -1290,13 +1297,27 @@ function Timeline({
         )
       : -1;
   const scrub = (event: React.PointerEvent<HTMLElement>) => {
+    event.stopPropagation();
     const rect = event.currentTarget.getBoundingClientRect();
     const target = event.currentTarget;
-    const updateFrame = (clientX: number) =>
-      onFrame(((clientX - rect.left) / rect.width) * duration);
+    let animationFrame = 0,
+      pendingX = event.clientX;
+    const updateFrame = (clientX: number) => {
+      pendingX = clientX;
+      if (animationFrame) return;
+      animationFrame = requestAnimationFrame(() => {
+        animationFrame = 0;
+        onFrame(((pendingX - rect.left) / rect.width) * duration);
+      });
+    };
     const move = (pointerEvent: globalThis.PointerEvent) =>
       updateFrame(pointerEvent.clientX);
     const end = () => {
+      if (animationFrame) {
+        cancelAnimationFrame(animationFrame);
+        animationFrame = 0;
+        onFrame(((pendingX - rect.left) / rect.width) * duration);
+      }
       target.removeEventListener("pointermove", move);
       target.removeEventListener("pointerup", end);
       target.removeEventListener("pointercancel", end);
@@ -1306,6 +1327,129 @@ function Timeline({
     target.addEventListener("pointerup", end);
     target.addEventListener("pointercancel", end);
     updateFrame(event.clientX);
+  };
+  const selectKeyframe = (value: KeyframeSelection, additive = false) =>
+    setSelectedKeyframes((current) => {
+      const exists = current.some(
+        (item) =>
+          item.trackId === value.trackId &&
+          item.keyframeId === value.keyframeId,
+      );
+      if (!additive) return [value];
+      return exists
+        ? current.filter(
+            (item) =>
+              item.trackId !== value.trackId ||
+              item.keyframeId !== value.keyframeId,
+          )
+        : [...current, value];
+    });
+  const deleteSelectedKeyframes = () => {
+    if (!selectedKeyframes.length) return;
+    const selected = new Set(
+      selectedKeyframes.map((item) => `${item.trackId}:${item.keyframeId}`),
+    );
+    update((draft) => {
+      draft.keyframeTracks.forEach((track) => {
+        track.keyframes = track.keyframes.filter(
+          (keyframe) => !selected.has(`${track.id}:${keyframe.id}`),
+        ) as typeof track.keyframes;
+      });
+    });
+    setSelectedKeyframes([]);
+  };
+  useEffect(() => {
+    const remove = (event: KeyboardEvent) => {
+      if (event.key !== "Delete" && event.key !== "Backspace") return;
+      const target = event.target as HTMLElement | null;
+      if (target?.matches("input, textarea, select, [contenteditable=true]"))
+        return;
+      if (!selectedKeyframes.length) return;
+      event.preventDefault();
+      deleteSelectedKeyframes();
+    };
+    window.addEventListener("keydown", remove);
+    return () => window.removeEventListener("keydown", remove);
+  });
+  const beginSurfaceInteraction = (
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    const target = event.target as HTMLElement;
+    if (target.closest("button, .clip, .ruler, .trackLabel")) return;
+    const surface = event.currentTarget,
+      surfaceRect = surface.getBoundingClientRect(),
+      startX = event.clientX,
+      startY = event.clientY,
+      initialSelection = event.shiftKey ? selectedKeyframes : [];
+    let moved = false;
+    surface.setPointerCapture(event.pointerId);
+    const move = (pointerEvent: globalThis.PointerEvent) => {
+      const deltaX = pointerEvent.clientX - startX,
+        deltaY = pointerEvent.clientY - startY;
+      if (!moved && Math.hypot(deltaX, deltaY) < 4) return;
+      moved = true;
+      const selectionRect = {
+        left: Math.min(startX, pointerEvent.clientX) - surfaceRect.left,
+        top: Math.min(startY, pointerEvent.clientY) - surfaceRect.top,
+        width: Math.abs(deltaX),
+        height: Math.abs(deltaY),
+      };
+      setMarquee(selectionRect);
+      const right = selectionRect.left + selectionRect.width,
+        bottom = selectionRect.top + selectionRect.height,
+        found = Array.from(
+          surface.querySelectorAll<HTMLElement>(".keyframeDiamond"),
+        )
+          .filter((diamond) => {
+            const rect = diamond.getBoundingClientRect(),
+              centerX = rect.left + rect.width / 2 - surfaceRect.left,
+              centerY = rect.top + rect.height / 2 - surfaceRect.top;
+            return (
+              centerX >= selectionRect.left &&
+              centerX <= right &&
+              centerY >= selectionRect.top &&
+              centerY <= bottom
+            );
+          })
+          .map((diamond) => ({
+            trackId: diamond.dataset.trackId!,
+            keyframeId: diamond.dataset.keyframeId!,
+          }));
+      const combined = [...initialSelection, ...found].filter(
+        (item, index, values) =>
+          values.findIndex(
+            (other) =>
+              other.trackId === item.trackId &&
+              other.keyframeId === item.keyframeId,
+          ) === index,
+      );
+      setSelectedKeyframes(combined);
+    };
+    const end = (pointerEvent: globalThis.PointerEvent) => {
+      surface.removeEventListener("pointermove", move);
+      surface.removeEventListener("pointerup", end);
+      surface.removeEventListener("pointercancel", end);
+      setMarquee(undefined);
+      if (!moved) {
+        if (!event.shiftKey) setSelectedKeyframes([]);
+        const lane = surface.querySelector<HTMLElement>(".keyframeLane");
+        if (lane) {
+          const rect = lane.getBoundingClientRect();
+          onFrame(
+            clamp(
+              ((pointerEvent.clientX - rect.left - 10) /
+                Math.max(1, rect.width - 20)) *
+                duration,
+              0,
+              duration - 1,
+            ),
+          );
+        }
+      }
+    };
+    surface.addEventListener("pointermove", move);
+    surface.addEventListener("pointerup", end);
+    surface.addEventListener("pointercancel", end);
   };
   return (
     <footer>
@@ -1339,10 +1483,12 @@ function Timeline({
               onClick={() => {
                 const keyframe = selectedTrackKeyframes[selectedTrackIndex - 1];
                 if (!keyframe) return;
-                setSelectedKeyframe({
-                  trackId: selectedTrack.id,
-                  keyframeId: keyframe.id,
-                });
+                setSelectedKeyframes([
+                  {
+                    trackId: selectedTrack.id,
+                    keyframeId: keyframe.id,
+                  },
+                ]);
                 onFrame(keyframe.frame);
               }}
             >
@@ -1354,10 +1500,12 @@ function Timeline({
               onClick={() => {
                 const keyframe = selectedTrackKeyframes[selectedTrackIndex + 1];
                 if (!keyframe) return;
-                setSelectedKeyframe({
-                  trackId: selectedTrack.id,
-                  keyframeId: keyframe.id,
-                });
+                setSelectedKeyframes([
+                  {
+                    trackId: selectedTrack.id,
+                    keyframeId: keyframe.id,
+                  },
+                ]);
                 onFrame(keyframe.frame);
               }}
             >
@@ -1446,19 +1594,8 @@ function Timeline({
               ))}
             </select>
             <button
-              title="Delete keyframe"
-              onClick={() => {
-                update((draft) => {
-                  const track = draft.keyframeTracks.find(
-                    (item) => item.id === selectedTrack.id,
-                  );
-                  if (track)
-                    track.keyframes = track.keyframes.filter(
-                      (item) => item.id !== selectedKey.id,
-                    ) as typeof track.keyframes;
-                });
-                setSelectedKeyframe(undefined);
-              }}
+              title={`Delete ${selectedKeyframes.length} selected keyframe${selectedKeyframes.length === 1 ? "" : "s"}`}
+              onClick={deleteSelectedKeyframes}
             >
               <I.Trash2 />
             </button>
@@ -1484,7 +1621,11 @@ function Timeline({
         </div>
       </div>
       <div className="tracks">
-        <div className="timelineSurface" style={{ width: `${zoom * 100}%` }}>
+        <div
+          className="timelineSurface"
+          style={{ width: `${zoom * 100}%` }}
+          onPointerDown={beginSurfaceInteraction}
+        >
           <div className="ruler" onPointerDown={scrub}>
             {ticks.map((second) => (
               <span
@@ -1505,6 +1646,7 @@ function Timeline({
           >
             <i />
           </div>
+          {marquee && <div className="keyframeMarquee" style={marquee} />}
           {project.layers.map((layer) => (
             <TimelineTrack
               key={layer.id}
@@ -1515,8 +1657,8 @@ function Timeline({
               update={update}
               onFrame={onFrame}
               onSelect={onSelect}
-              selectedKeyframe={selectedKeyframe}
-              onSelectKeyframe={setSelectedKeyframe}
+              selectedKeyframes={selectedKeyframes}
+              onSelectKeyframe={selectKeyframe}
             />
           ))}
         </div>
@@ -1532,7 +1674,7 @@ function TimelineTrack({
   update,
   onFrame,
   onSelect,
-  selectedKeyframe,
+  selectedKeyframes,
   onSelectKeyframe,
 }: {
   layer: ProjectLayer;
@@ -1542,8 +1684,11 @@ function TimelineTrack({
   update: (recipe: (draft: TemplateProject) => void) => void;
   onFrame: (frame: number) => void;
   onSelect: (id: string) => void;
-  selectedKeyframe?: { trackId: string; keyframeId: string };
-  onSelectKeyframe: (value: { trackId: string; keyframeId: string }) => void;
+  selectedKeyframes: { trackId: string; keyframeId: string }[];
+  onSelectKeyframe: (
+    value: { trackId: string; keyframeId: string },
+    additive?: boolean,
+  ) => void;
 }) {
   const Icon = icons[layer.type],
     duration = project.canvas.durationInFrames,
@@ -1703,7 +1848,7 @@ function TimelineTrack({
             duration={duration}
             update={update}
             onFrame={onFrame}
-            selectedKeyframe={selectedKeyframe}
+            selectedKeyframes={selectedKeyframes}
             onSelectKeyframe={onSelectKeyframe}
           />
         ))}
@@ -2009,7 +2154,7 @@ function KeyframePropertyRow({
   duration,
   update,
   onFrame,
-  selectedKeyframe,
+  selectedKeyframes,
   onSelectKeyframe,
 }: {
   project: TemplateProject;
@@ -2019,8 +2164,11 @@ function KeyframePropertyRow({
   duration: number;
   update: (recipe: (draft: TemplateProject) => void) => void;
   onFrame: (frame: number) => void;
-  selectedKeyframe?: { trackId: string; keyframeId: string };
-  onSelectKeyframe: (value: { trackId: string; keyframeId: string }) => void;
+  selectedKeyframes: { trackId: string; keyframeId: string }[];
+  onSelectKeyframe: (
+    value: { trackId: string; keyframeId: string },
+    additive?: boolean,
+  ) => void;
 }) {
   const track = findKeyframeTrack(
       project.keyframeTracks,
@@ -2095,8 +2243,16 @@ function KeyframePropertyRow({
             <button
               key={keyframe.id}
               className={`keyframeDiamond ${
-                selectedKeyframe?.keyframeId === keyframe.id ? "selected" : ""
+                selectedKeyframes.some(
+                  (item) =>
+                    item.trackId === track.id &&
+                    item.keyframeId === keyframe.id,
+                )
+                  ? "selected"
+                  : ""
               }`}
+              data-track-id={track.id}
+              data-keyframe-id={keyframe.id}
               style={{
                 left: `calc(10px + ${shownFrame / duration} * (100% - 20px))`,
               }}
@@ -2105,10 +2261,13 @@ function KeyframePropertyRow({
                 event.stopPropagation();
                 event.currentTarget.setPointerCapture(event.pointerId);
                 setDrag({ id: keyframe.id, frame: keyframe.frame });
-                onSelectKeyframe({
-                  trackId: track.id,
-                  keyframeId: keyframe.id,
-                });
+                onSelectKeyframe(
+                  {
+                    trackId: track.id,
+                    keyframeId: keyframe.id,
+                  },
+                  event.shiftKey,
+                );
                 onFrame(keyframe.frame);
               }}
               onPointerMove={(event) => {
