@@ -16,7 +16,7 @@ import { useEditorStore } from "../store/editorStore";
 import type { TransformMode } from "../store/editorStore";
 import { useEditorRuntime } from "../store/useEditorRuntime";
 import { inspectGlb } from "../model/inspectGlb";
-import { saveAsset } from "../persistence/database";
+import { loadAssetBlob, saveAsset } from "../persistence/database";
 import { SceneCanvas } from "../scene/SceneCanvas";
 import { useAssetUrl } from "../model/useAssetUrl";
 
@@ -61,7 +61,8 @@ export function App() {
   const [uploading, setUploading] = useState(false),
     [uploadError, setUploadError] = useState("");
   const [frameRequest, setFrameRequest] = useState(0),
-    [testingTemplate, setTestingTemplate] = useState(false);
+    [testingTemplate, setTestingTemplate] = useState(false),
+    [exporting, setExporting] = useState(false);
   const replaceModel = async (file?: File) => {
     if (!file) return;
     setUploading(true);
@@ -167,6 +168,9 @@ export function App() {
           </button>
           <button onClick={() => setTestingTemplate(true)}>
             <I.UserRound /> Preview as User
+          </button>
+          <button onClick={() => setExporting(true)}>
+            <I.Download /> Export Preview
           </button>
           <button
             className="primary"
@@ -391,6 +395,9 @@ export function App() {
         onPlay={setPlaying}
         onSelect={setSelected}
       />
+      {exporting && (
+        <ExportDialog project={project} onClose={() => setExporting(false)} />
+      )}
     </main>
   );
 }
@@ -1341,6 +1348,290 @@ function TimelineTrack({
   );
 }
 
+function ExportDialog({
+  project,
+  onClose,
+}: {
+  project: TemplateProject;
+  onClose: () => void;
+}) {
+  const stage = useRef<HTMLDivElement>(null),
+    cancelled = useRef(false),
+    [renderFrame, setRenderFrame] = useState(0),
+    [progress, setProgress] = useState(0),
+    [status, setStatus] = useState<"idle" | "rendering" | "done" | "error">(
+      "idle",
+    ),
+    [error, setError] = useState(""),
+    [downloadUrl, setDownloadUrl] = useState("");
+  useEffect(
+    () => () => {
+      cancelled.current = true;
+      if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+    },
+    [downloadUrl],
+  );
+  const start = async () => {
+    if (!stage.current) return;
+    cancelled.current = false;
+    setStatus("rendering");
+    setError("");
+    setProgress(0);
+    if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+    setDownloadUrl("");
+    try {
+      const blob = await renderProjectMp4(
+        project,
+        stage.current,
+        (frame) => {
+          setRenderFrame(frame);
+          setProgress((frame / project.canvas.durationInFrames) * 100);
+        },
+        () => cancelled.current,
+      );
+      if (cancelled.current) throw new Error("Export cancelled.");
+      setDownloadUrl(URL.createObjectURL(blob));
+      setProgress(100);
+      setStatus("done");
+    } catch (reason) {
+      if (cancelled.current) {
+        setStatus("idle");
+        return;
+      }
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "The MP4 could not be rendered.",
+      );
+      setStatus("error");
+    }
+  };
+  const fileName = `${project.name.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "renderlaunch-preview"}.mp4`;
+  return (
+    <div className="exportBackdrop" role="dialog" aria-modal="true">
+      <section className="exportDialog">
+        <div className="exportHead">
+          <div>
+            <small>LOCAL RENDER</small>
+            <h2>Export Preview</h2>
+          </div>
+          <button
+            aria-label="Close export"
+            disabled={status === "rendering"}
+            onClick={onClose}
+          >
+            <I.X />
+          </button>
+        </div>
+        <div className="renderSettings">
+          <span>
+            Resolution <b>1280 × 720</b>
+          </span>
+          <span>
+            Frame rate <b>30 FPS</b>
+          </span>
+          <span>
+            Format <b>H.264 MP4</b>
+          </span>
+          <span>
+            Duration <b>{project.canvas.durationInFrames / 30}s</b>
+          </span>
+        </div>
+        {status === "rendering" && (
+          <div className="renderProgress">
+            <div>
+              <i style={{ width: `${progress}%` }} />
+            </div>
+            <span>
+              Rendering frame{" "}
+              {Math.min(renderFrame + 1, project.canvas.durationInFrames)} of{" "}
+              {project.canvas.durationInFrames}
+            </span>
+            <b>{Math.round(progress)}%</b>
+          </div>
+        )}
+        {status === "error" && (
+          <div className="renderError">
+            <I.CircleAlert />
+            <div>
+              <b>Export failed</b>
+              <span>{error}</span>
+            </div>
+          </div>
+        )}
+        {status === "done" && (
+          <div className="renderDone">
+            <I.CircleCheck />
+            <div>
+              <b>Your preview is ready</b>
+              <span>{fileName}</span>
+            </div>
+          </div>
+        )}
+        <div className="exportActions">
+          {status === "rendering" ? (
+            <button
+              onClick={() => {
+                cancelled.current = true;
+              }}
+            >
+              Cancel render
+            </button>
+          ) : (
+            <button onClick={onClose}>Cancel</button>
+          )}
+          {status === "done" && downloadUrl ? (
+            <a className="primary" href={downloadUrl} download={fileName}>
+              <I.Download /> Download MP4
+            </a>
+          ) : (
+            <button className="primary" onClick={() => void start()}>
+              <I.Clapperboard />{" "}
+              {status === "error" ? "Try Again" : "Start Rendering"}
+            </button>
+          )}
+        </div>
+      </section>
+      <div className="renderStage" ref={stage} aria-hidden="true">
+        <div
+          className={`renderComposition ${bgClass(project.background.preset)}`}
+          style={backgroundStyle(project)}
+        >
+          {project.model?.assetId && (
+            <div
+              className="previewModel"
+              style={{
+                visibility: isLayerActive(project, "phone", renderFrame)
+                  ? "visible"
+                  : "hidden",
+              }}
+            >
+              <SceneCanvas
+                project={project}
+                frame={renderFrame}
+                autoFrame={false}
+                cameraControls={false}
+              />
+            </div>
+          )}
+          <PreviewOverlays project={project} frame={renderFrame} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+async function renderProjectMp4(
+  project: TemplateProject,
+  stage: HTMLDivElement,
+  onFrame: (frame: number) => void,
+  isCancelled: () => boolean,
+) {
+  if (!("VideoEncoder" in window) || !("VideoFrame" in window))
+    throw new Error(
+      "This browser cannot encode H.264 locally. Use the latest Chrome or Edge with hardware acceleration enabled.",
+    );
+  await validateExportAssets(project);
+  if (project.model?.assetId) await waitForRenderCanvas(stage);
+  await document.fonts.ready;
+  const { toCanvas } = await import("html-to-image"),
+    { ArrayBufferTarget, Muxer } = await import("mp4-muxer"),
+    config: VideoEncoderConfig = {
+      codec: "avc1.42001f",
+      width: 1280,
+      height: 720,
+      bitrate: 6_000_000,
+      framerate: project.canvas.fps,
+      avc: { format: "avc" },
+    },
+    support = await VideoEncoder.isConfigSupported(config);
+  if (!support.supported)
+    throw new Error(
+      "H.264 encoding is unavailable on this device. Enable browser hardware acceleration or try Chrome/Edge.",
+    );
+  const target = new ArrayBufferTarget(),
+    muxer = new Muxer({
+      target,
+      video: { codec: "avc", width: 1280, height: 720 },
+      fastStart: "in-memory",
+      firstTimestampBehavior: "offset",
+    });
+  let encoderFailure: Error | undefined;
+  const encoder = new VideoEncoder({
+    output: (chunk, metadata) => muxer.addVideoChunk(chunk, metadata),
+    error: (reason) => {
+      encoderFailure = reason;
+    },
+  });
+  encoder.configure(config);
+  for (let frame = 0; frame < project.canvas.durationInFrames; frame += 1) {
+    if (isCancelled()) break;
+    onFrame(frame);
+    await nextPaint();
+    const canvas = await toCanvas(stage, {
+      width: 1280,
+      height: 720,
+      canvasWidth: 1280,
+      canvasHeight: 720,
+      pixelRatio: 1,
+      skipFonts: true,
+      cacheBust: false,
+    });
+    const videoFrame = new VideoFrame(canvas, {
+      timestamp: Math.round((frame / project.canvas.fps) * 1_000_000),
+      duration: Math.round(1_000_000 / project.canvas.fps),
+    });
+    encoder.encode(videoFrame, { keyFrame: frame % 60 === 0 });
+    videoFrame.close();
+    if (encoder.encodeQueueSize > 8) await encoder.flush();
+    if (encoderFailure) throw encoderFailure;
+  }
+  if (isCancelled()) {
+    encoder.close();
+    throw new Error("Export cancelled.");
+  }
+  await encoder.flush();
+  if (encoderFailure) throw encoderFailure;
+  encoder.close();
+  muxer.finalize();
+  return new Blob([target.buffer], { type: "video/mp4" });
+}
+
+async function validateExportAssets(project: TemplateProject) {
+  const assets: Array<{ id?: string; label: string }> = [
+    { id: project.model?.assetId, label: "3D model" },
+    { id: project.screen?.mediaAssetId, label: "screen media" },
+    ...project.layers
+      .filter((layer) => layer.type === "image")
+      .map((layer) => ({ id: layer.media?.assetId, label: layer.name })),
+  ];
+  for (const asset of assets) {
+    if (!asset.id) continue;
+    if (!(await loadAssetBlob(asset.id)))
+      throw new Error(
+        `${asset.label} is missing from local storage. Attach it again before exporting.`,
+      );
+  }
+}
+
+async function waitForRenderCanvas(stage: HTMLDivElement) {
+  const deadline = performance.now() + 15_000;
+  while (!stage.querySelector(".threeCanvas canvas")) {
+    if (performance.now() > deadline)
+      throw new Error(
+        "The 3D scene did not become ready. Check the model, then retry the export.",
+      );
+    await new Promise((resolve) => window.setTimeout(resolve, 100));
+  }
+  await nextPaint();
+}
+
+function nextPaint() {
+  return new Promise<void>((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+  );
+}
+
 function UserPreview({
   template,
   frame,
@@ -1528,7 +1819,14 @@ function UserPreview({
       >
         <div className="canvasGlow" />
         {project.model?.assetId ? (
-          <div className="previewModel">
+          <div
+            className="previewModel"
+            style={{
+              visibility: isLayerActive(project, "phone", frame)
+                ? "visible"
+                : "hidden",
+            }}
+          >
             <SceneCanvas
               project={project}
               frame={frame}
@@ -1578,7 +1876,14 @@ function Preview({
       >
         <div className="canvasGlow" />
         {project.model?.assetId ? (
-          <div className="previewModel">
+          <div
+            className="previewModel"
+            style={{
+              visibility: isLayerActive(project, "phone", frame)
+                ? "visible"
+                : "hidden",
+            }}
+          >
             <SceneCanvas
               project={project}
               frame={frame}
