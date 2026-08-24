@@ -46,7 +46,7 @@ import { useEditorStore } from "../store/editorStore";
 import type { TransformMode } from "../store/editorStore";
 import { useEditorRuntime } from "../store/useEditorRuntime";
 import { inspectGlb } from "../model/inspectGlb";
-import { loadAssetBlob, saveAsset } from "../persistence/database";
+import { deleteProject as deleteStoredProject, deleteSceneTemplate, duplicateStoredProject, listProjects, listSceneTemplates, loadAssetBlob, renameProject as renameStoredProject, saveAsset, saveSceneTemplate, type StoredSceneTemplate } from "../persistence/database";
 import { SceneCanvas } from "../scene/SceneCanvas";
 import { useAssetUrl } from "../model/useAssetUrl";
 import { useTheme, type ThemePreference } from "../theme/useTheme";
@@ -101,6 +101,9 @@ export function App() {
     trimScene = useEditorStore((s) => s.trimScene),
     splitScene = useEditorStore((s) => s.splitScene);
   const setSceneTransition = useEditorStore((s) => s.setSceneTransition);
+  const openVideoProject = useEditorStore((s) => s.openVideoProject),
+    createVideoProject = useEditorStore((s) => s.createVideoProject),
+    addSceneFromTemplate = useEditorStore((s) => s.addSceneFromTemplate);
   const selected =
     project.layers.find((layer) => layer.id === selectedId) ??
     project.layers[0];
@@ -115,6 +118,7 @@ export function App() {
     [testingTemplate, setTestingTemplate] = useState(false),
     [exporting, setExporting] = useState(false),
     [themeMenuOpen, setThemeMenuOpen] = useState(false),
+    [libraryOpen, setLibraryOpen] = useState(true),
     [timelineHeight, setTimelineHeight] = useState(() => {
       const stored = Number(
         localStorage.getItem("renderlaunch-timeline-height"),
@@ -287,6 +291,8 @@ export function App() {
       setUploading(false);
     }
   };
+  if (libraryOpen)
+    return <ProjectLibrary currentProject={videoProject} activeComposition={project} onOpen={(selected) => { openVideoProject(selected); setLibraryOpen(false); }} onCreate={() => { createVideoProject(); setLibraryOpen(false); }} onUseTemplate={(template) => { addSceneFromTemplate(template.composition); setLibraryOpen(false); }} onContinue={() => setLibraryOpen(false)} />;
   if (!sceneEditorOpen)
     return (
       <VideoEditorWorkspace
@@ -313,6 +319,7 @@ export function App() {
           setFrame((active?.sourceStartFrame ?? 0) + frame);
           setSceneEditorOpen(true);
         }}
+        onOpenLibrary={() => setLibraryOpen(true)}
         onSave={() => void persist()}
       />
     );
@@ -349,6 +356,7 @@ export function App() {
           >
             <I.ChevronLeft />
           </button>
+          <button className="icon" aria-label="Open project library" title="Project library" onClick={() => { setPlaying(false); setLibraryOpen(true); }}><I.LayoutGrid /></button>
           <div className="project">
             <input
               aria-label="Project name"
@@ -785,6 +793,45 @@ export function App() {
   );
 }
 
+function ProjectLibrary({ currentProject, activeComposition, onOpen, onCreate, onUseTemplate, onContinue }: {
+  currentProject: VideoProject;
+  activeComposition: TemplateProject;
+  onOpen: (project: VideoProject) => void;
+  onCreate: () => void;
+  onUseTemplate: (template: StoredSceneTemplate) => void;
+  onContinue: () => void;
+}) {
+  const [tab, setTab] = useState<"projects" | "templates">("projects"), [projects, setProjects] = useState<VideoProject[]>([]),
+    [templates, setTemplates] = useState<StoredSceneTemplate[]>([]), [loading, setLoading] = useState(true), [error, setError] = useState("");
+  const refresh = async () => {
+    setLoading(true); setError("");
+    try { const [savedProjects, savedTemplates] = await Promise.all([listProjects(), listSceneTemplates()]); setProjects(savedProjects); setTemplates(savedTemplates); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "The library could not be loaded."); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { void refresh(); }, []);
+  return <main className="projectLibrary">
+    <header className="libraryHeader">
+      <div className="libraryBrand"><span><I.Clapperboard /></span><div><b>RenderLaunch</b><small>Launch video studio</small></div></div>
+      <div className="actions"><button onClick={onContinue}><I.ArrowRight /> Continue editing</button><button className="primary" onClick={onCreate}><I.Plus /> New video project</button></div>
+    </header>
+    <section className="libraryHero"><div><small>YOUR CREATIVE WORKSPACE</small><h1>Projects and scene templates</h1><p>Build complete launch videos, then reuse your best compositions in future projects.</p></div><div className="currentProjectCard"><small>CURRENT PROJECT</small><b>{currentProject.name}</b><span>{currentProject.scenes.length} scenes · {formatTimecode(sceneStarts(currentProject).totalFrames, currentProject.canvas.fps)}</span><button onClick={onContinue}>Open workspace <I.ArrowRight /></button></div></section>
+    <section className="libraryContent">
+      <div className="libraryTabs"><button className={tab === "projects" ? "active" : ""} onClick={() => setTab("projects")}><I.FolderOpen /> Video projects <span>{projects.length}</span></button><button className={tab === "templates" ? "active" : ""} onClick={() => setTab("templates")}><I.LayoutTemplate /> Scene templates <span>{templates.length}</span></button>{tab === "templates" && <button className="saveSceneTemplate" onClick={async () => { await saveSceneTemplate(activeComposition); await refresh(); }}><I.BookmarkPlus /> Save active scene as template</button>}</div>
+      {error && <div className="libraryError"><I.CircleAlert /> {error}</div>}
+      {loading ? <div className="libraryEmpty"><I.LoaderCircle className="spin" /> Loading library…</div> : tab === "projects" ? (
+        projects.length ? <div className="libraryGrid">{projects.map((project) => <article className="libraryCard" key={project.id}>
+          <button className="libraryThumbnail" onClick={() => onOpen(project)}>{project.thumbnailDataUrl ? <img src={project.thumbnailDataUrl} alt="" /> : project.scenes[0]?.thumbnailDataUrl || project.scenes[0]?.composition.thumbnailDataUrl ? <img src={project.scenes[0].thumbnailDataUrl ?? project.scenes[0].composition.thumbnailDataUrl} alt="" /> : <span><I.Clapperboard /><small>No thumbnail yet</small></span>}<i>{project.scenes.length} scenes</i></button>
+          <div className="libraryCardInfo"><div><b>{project.name}</b><small>Updated {new Date(project.updatedAt).toLocaleDateString()} · {formatTimecode(sceneStarts(project).totalFrames, project.canvas.fps)}</small></div><div className="libraryCardActions"><button title="Rename" onClick={async () => { const name = window.prompt("Rename project", project.name)?.trim(); if (name) { await renameStoredProject(project.id, name); await refresh(); } }}><I.Pencil /></button><button title="Duplicate" onClick={async () => { await duplicateStoredProject(project.id); await refresh(); }}><I.Copy /></button><button className="danger" title="Delete" onClick={async () => { if (window.confirm(`Delete “${project.name}”? This cannot be undone.`)) { await deleteStoredProject(project.id); await refresh(); } }}><I.Trash2 /></button></div></div>
+        </article>)}</div> : <div className="libraryEmpty"><I.FolderPlus /><h2>No saved projects yet</h2><p>Create a project, build your scenes, and save it to see it here.</p><button className="primary" onClick={onCreate}>Create first project</button></div>
+      ) : templates.length ? <div className="libraryGrid">{templates.map((template) => <article className="libraryCard" key={template.id}>
+        <button className={`libraryThumbnail ${bgClass(template.composition.background.preset)}`} style={backgroundStyle(template.composition, 0)} onClick={() => onUseTemplate(template)}>{template.thumbnailDataUrl ? <img src={template.thumbnailDataUrl} alt="" /> : <span><I.LayoutTemplate /><small>Reusable scene</small></span>}<i>{formatTimecode(template.composition.canvas.durationInFrames, template.composition.canvas.fps)}</i></button>
+        <div className="libraryCardInfo"><div><b>{template.name}</b><small>Saved {new Date(template.updatedAt).toLocaleDateString()}</small></div><div className="libraryCardActions"><button title="Add to current video" onClick={() => onUseTemplate(template)}><I.Plus /></button><button className="danger" title="Delete" onClick={async () => { if (window.confirm(`Delete scene template “${template.name}”?`)) { await deleteSceneTemplate(template.id); await refresh(); } }}><I.Trash2 /></button></div></div>
+      </article>)}</div> : <div className="libraryEmpty"><I.LayoutTemplate /><h2>No scene templates yet</h2><p>Save the active composition to reuse its model, animation, text, and timing.</p><button className="primary" onClick={async () => { await saveSceneTemplate(activeComposition); await refresh(); }}>Save active scene</button></div>}
+    </section>
+  </main>;
+}
+
 function VideoEditorWorkspace({
   videoProject,
   project,
@@ -803,6 +850,7 @@ function VideoEditorWorkspace({
   onSplitScene,
   onSetTransition,
   onOpenScene,
+  onOpenLibrary,
   onSave,
 }: {
   videoProject: VideoProject;
@@ -830,6 +878,7 @@ function VideoEditorWorkspace({
     durationInFrames: number,
   ) => void;
   onOpenScene: () => void;
+  onOpenLibrary: () => void;
   onSave: () => void;
 }) {
   const [masterZoom, setMasterZoom] = useState(1),
@@ -1025,6 +1074,7 @@ function VideoEditorWorkspace({
     <main className="videoEditorWorkspace">
       <header className="videoEditorHeader">
         <div className="videoProjectIdentity">
+          <button className="libraryButton" title="Project library" onClick={onOpenLibrary}><I.LayoutGrid /></button>
           <I.Clapperboard />
           <div>
             <b>{videoProject.name}</b>

@@ -3,6 +3,7 @@ import {
   migrateVideoProjectData,
   videoProjectSchema,
   type VideoProject,
+  type TemplateProject,
 } from "../project/schema";
 
 type StoredProject = VideoProject & { savedAt: string };
@@ -14,16 +15,26 @@ type StoredAsset = {
   blob: Blob;
   createdAt: string;
 };
+export type StoredSceneTemplate = {
+  id: string;
+  name: string;
+  composition: TemplateProject;
+  thumbnailDataUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 const database = new Dexie("renderlaunch") as Dexie & {
   projects: EntityTable<StoredProject, "id">;
   assets: EntityTable<StoredAsset, "id">;
+  sceneTemplates: EntityTable<StoredSceneTemplate, "id">;
 };
 
 database.version(1).stores({ projects: "id, updatedAt, savedAt" });
 database
   .version(2)
   .stores({ projects: "id, updatedAt, savedAt", assets: "id, createdAt" });
+database.version(3).stores({ projects: "id, updatedAt, savedAt", assets: "id, createdAt", sceneTemplates: "id, updatedAt" });
 
 export async function saveProject(project: VideoProject) {
   const valid = videoProjectSchema.parse(project);
@@ -107,6 +118,46 @@ export async function loadRecentProject(): Promise<VideoProject | null> {
     result.data.activeSceneId = result.data.scenes[0].id;
   return result.data;
 }
+
+export async function listProjects(): Promise<VideoProject[]> {
+  const stored = await database.projects.orderBy("updatedAt").reverse().toArray(), projects: VideoProject[] = [];
+  for (const record of stored) {
+    const { savedAt: _savedAt, ...candidate } = record, result = videoProjectSchema.safeParse(migrateVideoProjectData(candidate));
+    if (result.success) projects.push(result.data);
+  }
+  return projects;
+}
+
+export async function deleteProject(projectId: string) {
+  await database.projects.delete(projectId);
+  if (localStorage.getItem("renderlaunch:recent-project") === projectId) localStorage.removeItem("renderlaunch:recent-project");
+}
+
+export async function renameProject(projectId: string, name: string) {
+  const project = await database.projects.get(projectId);
+  if (!project) return;
+  await database.projects.put({ ...project, name, updatedAt: new Date().toISOString(), savedAt: new Date().toISOString() });
+}
+
+export async function duplicateStoredProject(projectId: string) {
+  const source = await database.projects.get(projectId);
+  if (!source) return null;
+  const now = new Date().toISOString(), copy = structuredClone(source), id = crypto.randomUUID();
+  copy.id = id; copy.name = `${source.name} Copy`; copy.createdAt = now; copy.updatedAt = now; copy.savedAt = now;
+  copy.scenes.forEach((scene, index) => { scene.id = crypto.randomUUID(); scene.order = index; scene.createdAt = now; scene.updatedAt = now; scene.composition.id = crypto.randomUUID(); scene.composition.createdAt = now; scene.composition.updatedAt = now; });
+  copy.activeSceneId = copy.scenes[0].id;
+  await database.projects.put(copy);
+  return copy as VideoProject;
+}
+
+export async function saveSceneTemplate(composition: TemplateProject) {
+  const now = new Date().toISOString(), template: StoredSceneTemplate = { id: crypto.randomUUID(), name: composition.name, composition: structuredClone(composition), thumbnailDataUrl: composition.thumbnailDataUrl, createdAt: now, updatedAt: now };
+  await database.sceneTemplates.put(template);
+  return template;
+}
+
+export async function listSceneTemplates() { return database.sceneTemplates.orderBy("updatedAt").reverse().toArray(); }
+export async function deleteSceneTemplate(templateId: string) { await database.sceneTemplates.delete(templateId); }
 
 export async function saveAsset(file: File) {
   const id = crypto.randomUUID();

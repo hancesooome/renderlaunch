@@ -82,6 +82,9 @@ type EditorState = {
   addGlobalOverlay: (type: GlobalOverlayType, startFrame: number) => void;
   updateGlobalOverlay: (overlayId: string, patch: Partial<GlobalOverlay>) => void;
   deleteGlobalOverlay: (overlayId: string) => void;
+  openVideoProject: (videoProject: VideoProject) => void;
+  createVideoProject: () => void;
+  addSceneFromTemplate: (composition: TemplateProject) => void;
   undo: () => void;
   redo: () => void;
   persist: () => Promise<void>;
@@ -640,6 +643,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       const videoProject = produce(state.videoProject, (draft) => { draft.globalOverlays = draft.globalOverlays.filter((item) => item.id !== overlayId); draft.updatedAt = new Date().toISOString(); });
       return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
+  openVideoProject: (videoProject) => {
+    const resolved = resolveMasterFrame(videoProject, 0);
+    set({ videoProject, project: resolved.scene.composition, currentFrame: resolved.localFrame, masterFrame: 0, playing: false, selectedLayerId: "phone", past: [], future: [], saveStatus: "saved" });
+  },
+  createVideoProject: () => {
+    const videoProject = createDefaultVideoProject(), resolved = resolveMasterFrame(videoProject, 0);
+    set({ videoProject, project: resolved.scene.composition, currentFrame: 0, masterFrame: 0, playing: false, selectedLayerId: "phone", past: [], future: [], saveStatus: "unsaved" });
+  },
+  addSceneFromTemplate: (composition) =>
+    set((state) => {
+      const now = new Date().toISOString(), sceneId = crypto.randomUUID(), cloned = structuredClone(composition);
+      cloned.id = crypto.randomUUID(); cloned.createdAt = now; cloned.updatedAt = now;
+      const videoProject = produce(state.videoProject, (draft) => {
+        draft.scenes.push({ id: sceneId, name: cloned.name, order: draft.scenes.length, sourceStartFrame: 0, durationInFrames: cloned.canvas.durationInFrames, transitionToNext: { type: "cut", durationInFrames: 15 }, thumbnailDataUrl: cloned.thumbnailDataUrl, composition: cloned, createdAt: now, updatedAt: now });
+        draft.activeSceneId = sceneId; draft.updatedAt = now;
+      });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, project: cloned, currentFrame: 0, masterFrame: sceneMasterStart(videoProject, sceneId), playing: false, selectedLayerId: "phone", saveStatus: "unsaved" };
     }),
   undo: () =>
     set((state) => {

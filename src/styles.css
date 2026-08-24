@@ -29,6 +29,64 @@ button {
   cursor: pointer;
 }
 
+/* Project and template library */
+.projectLibrary { min-height: 100vh; overflow-y: auto; background: var(--ui-bg); color: var(--ui-text); }
+.libraryHeader { height: 70px; padding: 0 34px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--ui-border); background: var(--ui-surface); }
+.libraryBrand { display: flex; align-items: center; gap: 11px; }
+.libraryBrand > span { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; background: var(--ui-accent); color: white; }
+.libraryBrand > span svg { width: 21px; }
+.libraryBrand > div { display: grid; gap: 2px; }
+.libraryBrand b { font-size: 16px; }
+.libraryBrand small { color: var(--ui-muted); }
+.libraryHeader .actions { display: flex; gap: 9px; }
+.libraryHeader .actions button,
+.libraryEmpty button { height: 38px; padding: 0 14px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--ui-border); border-radius: 9px; }
+.libraryHeader .actions button svg { width: 15px; }
+.projectLibrary button.primary { border-color: var(--ui-accent); background: var(--ui-accent); color: white; }
+.libraryHero { padding: 40px max(34px, calc((100vw - 1320px) / 2)); display: grid; grid-template-columns: minmax(0, 1fr) 330px; align-items: center; gap: 50px; background: radial-gradient(circle at 72% 10%, var(--ui-accent-soft), transparent 33%); }
+.libraryHero small { color: var(--ui-accent); font-size: 10px; font-weight: 700; letter-spacing: .13em; }
+.libraryHero h1 { margin: 8px 0 10px; font-size: clamp(30px, 4vw, 50px); letter-spacing: -.04em; }
+.libraryHero p { max-width: 620px; margin: 0; color: var(--ui-muted); font-size: 15px; line-height: 1.6; }
+.currentProjectCard { padding: 20px; display: grid; gap: 8px; border: 1px solid var(--ui-border); border-radius: 14px; background: var(--ui-surface); box-shadow: 0 14px 40px #00000012; }
+.currentProjectCard b { overflow: hidden; font-size: 17px; text-overflow: ellipsis; white-space: nowrap; }
+.currentProjectCard span { color: var(--ui-muted); }
+.currentProjectCard button { height: 34px; margin-top: 7px; display: flex; align-items: center; justify-content: space-between; color: var(--ui-accent); font-weight: 600; }
+.currentProjectCard button svg { width: 15px; }
+.libraryContent { max-width: 1388px; margin: 0 auto; padding: 0 34px 50px; }
+.libraryTabs { height: 52px; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--ui-border); }
+.libraryTabs button { height: 34px; padding: 0 11px; display: flex; align-items: center; gap: 6px; border-radius: 7px; color: var(--ui-muted); }
+.libraryTabs button svg { width: 15px; }
+.libraryTabs button span { min-width: 19px; padding: 2px 5px; border-radius: 9px; background: var(--ui-panel); font-size: 9px; text-align: center; }
+.libraryTabs button.active { background: var(--ui-accent-soft); color: var(--ui-accent); }
+.libraryTabs .saveSceneTemplate { margin-left: auto; border: 1px solid var(--ui-border); color: var(--ui-text); }
+.libraryGrid { padding-top: 22px; display: grid; grid-template-columns: repeat(auto-fill, minmax(265px, 1fr)); gap: 18px; }
+.libraryCard { min-width: 0; overflow: hidden; border: 1px solid var(--ui-border); border-radius: 12px; background: var(--ui-surface); transition: transform .15s, box-shadow .15s; }
+.libraryCard:hover { transform: translateY(-2px); box-shadow: 0 12px 32px #00000015; }
+.libraryThumbnail { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; display: grid; place-items: center; border-bottom: 1px solid var(--ui-border); background: linear-gradient(135deg, var(--ui-accent-soft), var(--ui-panel)); }
+.libraryThumbnail img { width: 100%; height: 100%; object-fit: cover; }
+.libraryThumbnail > span { display: grid; place-items: center; gap: 8px; color: var(--ui-muted); }
+.libraryThumbnail > span svg { width: 30px; height: 30px; }
+.libraryThumbnail > i { position: absolute; right: 8px; bottom: 8px; padding: 4px 7px; border-radius: 5px; background: #111827d9; color: white; font-size: 9px; font-style: normal; }
+.libraryCardInfo { min-height: 67px; padding: 10px 9px 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.libraryCardInfo > div:first-child { min-width: 0; display: grid; gap: 5px; }
+.libraryCardInfo b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.libraryCardInfo small { color: var(--ui-muted); font-size: 9px; }
+.libraryCardActions { display: flex; }
+.libraryCardActions button { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 6px; }
+.libraryCardActions button:hover { background: var(--ui-panel); }
+.libraryCardActions button svg { width: 13px; }
+.libraryCardActions .danger { color: var(--ui-danger, #ef4444); }
+.libraryEmpty { min-height: 330px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--ui-muted); text-align: center; }
+.libraryEmpty > svg { width: 42px; height: 42px; margin-bottom: 8px; color: var(--ui-accent); }
+.libraryEmpty h2 { margin: 6px 0; color: var(--ui-text); }
+.libraryEmpty p { margin: 0 0 16px; }
+.libraryError { margin-top: 18px; padding: 12px; display: flex; align-items: center; gap: 8px; border: 1px solid #ef444466; border-radius: 8px; color: #ef4444; }
+.libraryError svg { width: 16px; }
+.libraryButton { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--ui-border); border-radius: 8px; }
+.libraryButton svg { width: 15px; }
+.spin { animation: librarySpin 1s linear infinite; }
+@keyframes librarySpin { to { transform: rotate(360deg); } }
+
 /* Master video workspace */
 .videoEditorWorkspace {
   height: 100vh;
