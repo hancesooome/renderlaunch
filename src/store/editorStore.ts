@@ -88,7 +88,7 @@ type EditorState = {
   addSceneFromTemplate: (composition: TemplateProject) => void;
   insertSceneFromTemplate: (composition: TemplateProject, targetIndex: number) => void;
   addTimelineAssetClip: (type: Extract<TimelineClipType, "image" | "video">, asset: { id: string; name: string }, startFrame: number, durationInFrames: number) => void;
-  updateTimelineAssetClip: (clipId: string, patch: { startFrame?: number; durationInFrames?: number; sourceStartFrame?: number }) => void;
+  updateTimelineAssetClip: (clipId: string, patch: { startFrame?: number; durationInFrames?: number; sourceStartFrame?: number; x?: number; y?: number; scale?: number; opacity?: number; crop?: "fit" | "fill" | "stretch" }) => void;
   deleteTimelineAssetClip: (clipId: string, ripple?: boolean) => void;
   splitTimelineAssetClip: (clipId: string, frame: number) => void;
   duplicateTimelineAssetClip: (clipId: string) => void;
@@ -632,7 +632,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           width: type === "logo" || type === "watermark" ? 18 : 70, content: text[type],
           fontSize: type === "title" ? 64 : type === "caption" ? 30 : 36, fontWeight: type === "caption" ? 500 : 700,
           color: "#ffffff", backgroundColor: type === "caption" || type === "cta" ? "#111827cc" : "transparent",
-          opacity: type === "watermark" ? 0.55 : 1, textAlign: "center",
+          opacity: type === "watermark" ? 0.55 : 1, textAlign: "center", fontFamily: "Inter, system-ui, sans-serif", animation: "none",
         },
         videoProject = produce(state.videoProject, (draft) => { draft.globalOverlays.push(overlay); draft.updatedAt = new Date().toISOString(); });
       return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
@@ -688,14 +688,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         let available = Math.round(clamp(startFrame, 0, Math.max(0, total - duration)));
         for (const clip of [...track.clips].sort((a, b) => a.startFrame - b.startFrame)) if (available < clip.startFrame + clip.durationInFrames && available + duration > clip.startFrame) available = clip.startFrame + clip.durationInFrames;
         available = Math.round(clamp(available, 0, Math.max(0, total - duration)));
-        track.clips.push({ id: crypto.randomUUID(), type, name: asset.name, startFrame: available, durationInFrames: Math.min(duration, total - available), sourceStartFrame: 0, referenceType: "asset", referenceId: asset.id, assetId: asset.id });
+        track.clips.push({ id: crypto.randomUUID(), type, name: asset.name, startFrame: available, durationInFrames: Math.min(duration, total - available), sourceStartFrame: 0, referenceType: "asset", referenceId: asset.id, assetId: asset.id, x: 50, y: 50, scale: 1, opacity: 1, crop: "fit" });
         draft.updatedAt = new Date().toISOString();
       });
       return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
     }),
   updateTimelineAssetClip: (clipId, patch) =>
     set((state) => {
-      const videoProject = produce(state.videoProject, (draft) => { const total = resolveMasterFrame(draft, Number.MAX_SAFE_INTEGER).totalFrames, clip = draft.timelineTracks.flatMap((track) => track.clips).find((item) => item.id === clipId && item.referenceType === "asset"); if (clip) { Object.assign(clip, patch); clip.sourceStartFrame = Math.max(0, Math.round(clip.sourceStartFrame)); clip.durationInFrames = Math.max(1, Math.round(clip.durationInFrames)); clip.startFrame = Math.round(clamp(clip.startFrame, 0, Math.max(0, total - clip.durationInFrames))); } draft.updatedAt = new Date().toISOString(); });
+      const videoProject = produce(state.videoProject, (draft) => { const total = resolveMasterFrame(draft, Number.MAX_SAFE_INTEGER).totalFrames, clip = draft.timelineTracks.flatMap((track) => track.clips).find((item) => item.id === clipId && item.referenceType === "asset"); if (clip) { Object.assign(clip, patch); clip.sourceStartFrame = Math.max(0, Math.round(clip.sourceStartFrame)); clip.durationInFrames = Math.max(1, Math.round(clip.durationInFrames)); clip.startFrame = Math.round(clamp(clip.startFrame, 0, Math.max(0, total - clip.durationInFrames))); clip.x = clamp(clip.x, 0, 100); clip.y = clamp(clip.y, 0, 100); clip.scale = clamp(clip.scale, .05, 10); clip.opacity = clamp(clip.opacity, 0, 1); } draft.updatedAt = new Date().toISOString(); });
       return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
     }),
   deleteTimelineAssetClip: (clipId, ripple = false) =>

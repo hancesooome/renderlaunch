@@ -378,6 +378,8 @@ export const globalOverlaySchema = z.object({
   backgroundColor: z.string().default("transparent"),
   opacity: z.number().min(0).max(1).default(1),
   textAlign: z.enum(["left", "center", "right"]).default("center"),
+  fontFamily: z.string().default("Inter, system-ui, sans-serif"),
+  animation: z.enum(["none", "fade", "slide-up", "typewriter"]).default("none"),
 });
 
 export const timelineClipTypeSchema = z.enum(["scene", "video", "image", "text", "audio"]);
@@ -391,6 +393,11 @@ export const timelineClipSchema = z.object({
   referenceType: z.enum(["scene", "audio-clip", "overlay", "asset"]),
   referenceId: z.string().min(1),
   assetId: z.string().optional(),
+  x: z.number().min(0).max(100).default(50),
+  y: z.number().min(0).max(100).default(50),
+  scale: z.number().min(0.05).max(10).default(1),
+  opacity: z.number().min(0).max(1).default(1),
+  crop: z.enum(["fit", "fill", "stretch"]).default("fit"),
 });
 export const timelineTrackSchema = z.object({
   id: z.string().min(1),
@@ -415,6 +422,7 @@ export function buildUnifiedTimelineTracks(
   overlays: Array<z.infer<typeof globalOverlaySchema>>,
   existingTracks: Array<z.infer<typeof timelineTrackSchema>> = [],
 ) {
+  const visual = { x: 50, y: 50, scale: 1, opacity: 1, crop: "fit" as const };
   const standalone = (type: z.infer<typeof timelineClipTypeSchema>) => existingTracks.filter((track) => track.type === type).flatMap((track) => track.clips).filter((clip) => clip.referenceType === "asset");
   const ordered = [...scenes].sort((a, b) => a.order - b.order), starts: number[] = [];
   let cursor = 0;
@@ -425,17 +433,17 @@ export function buildUnifiedTimelineTracks(
   });
   const tracks: Array<z.infer<typeof timelineTrackSchema>> = [{
     id: "master-scenes", type: "scene", name: "Scenes", order: 0, locked: false, muted: false, visible: true,
-    clips: ordered.map((scene, index) => ({ id: `scene-clip:${scene.id}`, type: "scene", name: scene.name, startFrame: starts[index], durationInFrames: scene.durationInFrames, sourceStartFrame: scene.sourceStartFrame, referenceType: "scene", referenceId: scene.id })),
+    clips: ordered.map((scene, index) => ({ id: `scene-clip:${scene.id}`, type: "scene", name: scene.name, startFrame: starts[index], durationInFrames: scene.durationInFrames, sourceStartFrame: scene.sourceStartFrame, referenceType: "scene", referenceId: scene.id, ...visual })),
   }, {
     id: "master-images", type: "image", name: "Images & logos", order: 1, locked: false, muted: false, visible: true,
-    clips: [...overlays.filter((overlay) => overlay.type === "logo" || overlay.type === "watermark").map((overlay) => ({ id: `overlay-clip:${overlay.id}`, type: "image" as const, name: overlay.name, startFrame: overlay.startFrame, durationInFrames: overlay.durationInFrames, sourceStartFrame: 0, referenceType: "overlay" as const, referenceId: overlay.id, assetId: overlay.assetId })), ...standalone("image")],
+    clips: [...overlays.filter((overlay) => overlay.type === "logo" || overlay.type === "watermark").map((overlay) => ({ id: `overlay-clip:${overlay.id}`, type: "image" as const, name: overlay.name, startFrame: overlay.startFrame, durationInFrames: overlay.durationInFrames, sourceStartFrame: 0, referenceType: "overlay" as const, referenceId: overlay.id, assetId: overlay.assetId, ...visual })), ...standalone("image")],
   }, {
     id: "master-text", type: "text", name: "Titles & captions", order: 2, locked: false, muted: false, visible: true,
-    clips: overlays.filter((overlay) => overlay.type !== "logo" && overlay.type !== "watermark").map((overlay) => ({ id: `overlay-clip:${overlay.id}`, type: "text", name: overlay.name, startFrame: overlay.startFrame, durationInFrames: overlay.durationInFrames, sourceStartFrame: 0, referenceType: "overlay", referenceId: overlay.id })),
+    clips: overlays.filter((overlay) => overlay.type !== "logo" && overlay.type !== "watermark").map((overlay) => ({ id: `overlay-clip:${overlay.id}`, type: "text", name: overlay.name, startFrame: overlay.startFrame, durationInFrames: overlay.durationInFrames, sourceStartFrame: 0, referenceType: "overlay", referenceId: overlay.id, ...visual })),
   }, {
     id: "master-video", type: "video", name: "Video", order: 3, locked: false, muted: false, visible: true, clips: standalone("video"),
   }];
-  audioTracks.forEach((track, index) => tracks.push({ id: `master-audio:${track.id}`, type: "audio", name: track.name, order: 4 + index, locked: false, muted: track.muted, visible: true, clips: track.clips.map((clip) => ({ id: `audio-clip:${clip.id}`, type: "audio", name: clip.fileName, startFrame: clip.startFrame, durationInFrames: clip.durationInFrames, sourceStartFrame: clip.sourceStartFrame, referenceType: "audio-clip", referenceId: clip.id, assetId: clip.assetId })) }));
+  audioTracks.forEach((track, index) => tracks.push({ id: `master-audio:${track.id}`, type: "audio", name: track.name, order: 4 + index, locked: false, muted: track.muted, visible: true, clips: track.clips.map((clip) => ({ id: `audio-clip:${clip.id}`, type: "audio", name: clip.fileName, startFrame: clip.startFrame, durationInFrames: clip.durationInFrames, sourceStartFrame: clip.sourceStartFrame, referenceType: "audio-clip", referenceId: clip.id, assetId: clip.assetId, ...visual })) }));
   return tracks;
 }
 

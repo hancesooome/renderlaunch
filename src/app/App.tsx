@@ -37,6 +37,7 @@ import type {
   GlobalOverlay,
   GlobalOverlayType,
   TimelineTrack,
+  TimelineClip,
 } from "../project/schema";
 import { buildUnifiedTimelineTracks } from "../project/schema";
 import {
@@ -981,6 +982,16 @@ function VideoEditorWorkspace({
     });
     setSelectedTimelineIds([]); setSelectedAssetClipId(undefined); setSelectedAudio(undefined); setSelectedOverlayId(undefined);
   };
+  const updateSelectedTiming = (operation: "shift" | "duration" | "align", value: number) => selectedTimelineIds.forEach((selection) => {
+    const [kind, first, second] = selection.split(":"), assetClip = kind === "asset" ? unifiedTimelineTracks.flatMap((track) => track.clips).find((clip) => clip.id === first) : undefined,
+      audioClip = kind === "audio" ? videoProject.audioTracks.find((track) => track.id === first)?.clips.find((clip) => clip.id === second) : undefined,
+      overlay = kind === "overlay" ? videoProject.globalOverlays.find((item) => item.id === first) : undefined;
+    const currentStart = assetClip?.startFrame ?? audioClip?.startFrame ?? overlay?.startFrame ?? 0,
+      patch = operation === "duration" ? { durationInFrames: Math.max(1, Math.round(value)) } : { startFrame: Math.max(0, Math.round(operation === "align" ? value : currentStart + value)) };
+    if (assetClip) updateTimelineAssetClip(assetClip.id, patch);
+    else if (audioClip) updateAudioClip(first, second, patch);
+    else if (overlay) updateGlobalOverlay(first, patch);
+  });
   const refreshAssetLibrary = async () => {
     const [assets, folders] = await Promise.all([listAssets(), listAssetFolders()]);
     setLibraryAssets(assets); setAssetFolders(folders);
@@ -1323,6 +1334,7 @@ function VideoEditorWorkspace({
             }
           >
             <MasterPlaybackVisual playback={playback} videoProject={normalizedVideoProject} playing={playing} />
+            <MasterMediaClips clips={[...videoTimelineTrack.clips, ...imageTimelineTrack.clips].filter((clip) => clip.referenceType === "asset")} frame={shownMasterFrame} fps={videoProject.canvas.fps} playing={playing} />
             <MasterOverlays overlays={videoProject.globalOverlays} frame={shownMasterFrame} />
           </div>
           <div className="masterPreviewControls">
@@ -1347,21 +1359,26 @@ function VideoEditorWorkspace({
         <aside className="masterInspectorPanel">
           <div className="masterPanelResize horizontal left" onPointerDown={(event) => resizeMasterPanel(event, "right")} />
           <div className="masterPanelTitle"><b>Inspector</b><I.SlidersHorizontal /></div>
-          {selectedAssetClip ? <div className="masterInspectorContent">
+          {selectedTimelineIds.length > 1 ? <div className="masterInspectorContent">
+            <div className="inspectorSelection"><span className="blue"><I.MousePointer2 /></span><div><small>MULTIPLE CLIPS</small><b>{selectedTimelineIds.length} clips selected</b></div></div>
+            <section><h3>Shared timing</h3><div className="inspectorActions"><button onClick={() => updateSelectedTiming("shift", -5)}><I.ChevronLeft /> -5 frames</button><button onClick={() => updateSelectedTiming("shift", 5)}>+5 frames <I.ChevronRight /></button></div><label>Set duration<input type="number" min="1" placeholder="Frames" onChange={(event) => { if (event.target.value) updateSelectedTiming("duration", Number(event.target.value)); }} /></label><button className="wide" onClick={() => updateSelectedTiming("align", shownMasterFrame)}><I.AlignStartVertical /> Align starts to playhead</button></section>
+            <button className="inspectorDelete" onClick={deleteTimelineSelection}><I.Trash2 /> Delete selected clips</button>
+          </div> : selectedAssetClip ? <div className="masterInspectorContent">
             <div className="inspectorSelection"><span className="violet">{selectedAssetClip.type === "video" ? <I.Film /> : <I.Image />}</span><div><small>{selectedAssetClip.type.toUpperCase()} CLIP</small><b>{selectedAssetClip.name}</b></div></div>
             <section><h3>Timing</h3><div className="inspectorGrid"><label>Start<input type="number" min="0" value={selectedAssetClip.startFrame} onChange={(event) => updateTimelineAssetClip(selectedAssetClip.id, { startFrame: Number(event.target.value) })} /></label><label>Source in<input type="number" min="0" value={selectedAssetClip.sourceStartFrame} onChange={(event) => updateTimelineAssetClip(selectedAssetClip.id, { sourceStartFrame: Number(event.target.value) })} /></label><label>Duration<input type="number" min="1" value={selectedAssetClip.durationInFrames} onChange={(event) => updateTimelineAssetClip(selectedAssetClip.id, { durationInFrames: Number(event.target.value) })} /></label><label>End<input value={selectedAssetClip.startFrame + selectedAssetClip.durationInFrames} readOnly /></label></div></section>
+            <section><h3>Visual</h3><div className="inspectorGrid"><label>Position X<input type="number" min="0" max="100" value={selectedAssetClip.x} onChange={(event) => updateTimelineAssetClip(selectedAssetClip.id, { x: Number(event.target.value) })} /></label><label>Position Y<input type="number" min="0" max="100" value={selectedAssetClip.y} onChange={(event) => updateTimelineAssetClip(selectedAssetClip.id, { y: Number(event.target.value) })} /></label><label>Scale<input type="number" min=".05" max="10" step=".05" value={selectedAssetClip.scale} onChange={(event) => updateTimelineAssetClip(selectedAssetClip.id, { scale: Number(event.target.value) })} /></label><label>Opacity<input type="number" min="0" max="1" step=".05" value={selectedAssetClip.opacity} onChange={(event) => updateTimelineAssetClip(selectedAssetClip.id, { opacity: Number(event.target.value) })} /></label></div><label>Crop<select value={selectedAssetClip.crop} onChange={(event) => updateTimelineAssetClip(selectedAssetClip.id, { crop: event.target.value as "fit" | "fill" | "stretch" })}><option value="fit">Fit</option><option value="fill">Fill</option><option value="stretch">Stretch</option></select></label></section>
             <section><h3>Actions</h3><div className="inspectorActions"><button onClick={() => duplicateTimelineAssetClip(selectedAssetClip.id)}><I.Copy /> Duplicate</button><button disabled={shownMasterFrame <= selectedAssetClip.startFrame || shownMasterFrame >= selectedAssetClip.startFrame + selectedAssetClip.durationInFrames} onClick={() => splitTimelineAssetClip(selectedAssetClip.id, shownMasterFrame)}><I.Scissors /> Split</button></div></section>
             <button className="inspectorDelete" onClick={() => { deleteTimelineAssetClip(selectedAssetClip.id, rippleDelete); setSelectedAssetClipId(undefined); }}><I.Trash2 /> {rippleDelete ? "Ripple delete" : "Delete clip"}</button>
           </div> : selectedOverlay ? <div className="masterInspectorContent">
             <div className="inspectorSelection"><span className="violet"><I.Layers2 /></span><div><small>GLOBAL OVERLAY</small><b>{selectedOverlay.name}</b></div></div>
             <section><h3>Content</h3>{selectedOverlay.type !== "logo" && selectedOverlay.type !== "watermark" ? <textarea value={selectedOverlay.content} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { content: event.target.value })} /> : <label className="masterFileField"><I.Upload /> {selectedOverlay.fileName ?? "Upload image"}<input type="file" accept="image/*" onChange={(event) => void uploadOverlayImage(selectedOverlay.id, event.target.files?.[0])} /></label>}</section>
             <section><h3>Transform</h3><div className="inspectorGrid"><label>X<input type="number" value={selectedOverlay.x} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { x: clamp(Number(event.target.value), 0, 100) })} /></label><label>Y<input type="number" value={selectedOverlay.y} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { y: clamp(Number(event.target.value), 0, 100) })} /></label><label>Width<input type="number" value={selectedOverlay.width} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { width: clamp(Number(event.target.value), 5, 100) })} /></label><label>Opacity<input type="number" step=".05" value={selectedOverlay.opacity} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { opacity: clamp(Number(event.target.value), 0, 1) })} /></label></div></section>
-            <section><h3>Appearance</h3><div className="inspectorGrid"><label>Size<input type="number" value={selectedOverlay.fontSize} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { fontSize: clamp(Number(event.target.value), 8, 240) })} /></label><label>Color<input type="color" value={selectedOverlay.color} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { color: event.target.value })} /></label></div></section>
+            <section><h3>Appearance</h3><div className="inspectorGrid"><label>Size<input type="number" value={selectedOverlay.fontSize} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { fontSize: clamp(Number(event.target.value), 8, 240) })} /></label><label>Color<input type="color" value={selectedOverlay.color} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { color: event.target.value })} /></label></div>{selectedOverlay.type !== "logo" && selectedOverlay.type !== "watermark" && <><label>Font<select value={selectedOverlay.fontFamily} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { fontFamily: event.target.value })}><option value="Inter, system-ui, sans-serif">Inter</option><option value="Arial, sans-serif">Arial</option><option value="Georgia, serif">Georgia</option><option value="'Courier New', monospace">Courier New</option></select></label><label>Animation<select value={selectedOverlay.animation} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { animation: event.target.value as GlobalOverlay["animation"] })}><option value="none">None</option><option value="fade">Fade in</option><option value="slide-up">Slide up</option><option value="typewriter">Typewriter</option></select></label></>}</section>
             <button className="inspectorDelete" onClick={() => { deleteGlobalOverlay(selectedOverlay.id); setSelectedOverlayId(undefined); }}><I.Trash2 /> Delete overlay</button>
           </div> : selectedClip && selectedAudio ? <div className="masterInspectorContent">
             <div className="inspectorSelection"><span className="green"><I.AudioLines /></span><div><small>AUDIO CLIP</small><b>{selectedClip.fileName}</b></div></div>
             <section><h3>Timing</h3><div className="inspectorGrid"><label>Start<input type="number" value={selectedClip.startFrame} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { startFrame: Math.max(0, Number(event.target.value)) })} /></label><label>Duration<input type="number" value={selectedClip.durationInFrames} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { durationInFrames: Math.max(1, Number(event.target.value)) })} /></label></div></section>
-            <section><h3>Audio</h3><label className="inspectorRange">Volume<input type="range" min="0" max="2" step=".05" value={selectedClip.volume} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { volume: Number(event.target.value) })} /><span>{Math.round(selectedClip.volume * 100)}%</span></label><div className="inspectorGrid"><label>Fade in<input type="number" min="0" value={selectedClip.fadeInFrames} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { fadeInFrames: Math.max(0, Number(event.target.value)) })} /></label><label>Fade out<input type="number" min="0" value={selectedClip.fadeOutFrames} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { fadeOutFrames: Math.max(0, Number(event.target.value)) })} /></label></div></section>
+            <section><h3>Audio</h3><div className="inspectorWaveform">{selectedClip.waveform.map((peak, index) => <i key={index} style={{ height: `${Math.max(4, peak * 100)}%` }} />)}</div><label className="inspectorRange">Volume<input type="range" min="0" max="2" step=".05" value={selectedClip.volume} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { volume: Number(event.target.value) })} /><span>{Math.round(selectedClip.volume * 100)}%</span></label><div className="inspectorGrid"><label>Fade in<input type="number" min="0" value={selectedClip.fadeInFrames} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { fadeInFrames: Math.max(0, Number(event.target.value)) })} /></label><label>Fade out<input type="number" min="0" value={selectedClip.fadeOutFrames} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { fadeOutFrames: Math.max(0, Number(event.target.value)) })} /></label></div></section>
             <button onClick={() => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { muted: !selectedClip.muted })}>{selectedClip.muted ? <I.Volume2 /> : <I.VolumeX />} {selectedClip.muted ? "Unmute clip" : "Mute clip"}</button><button className="inspectorDelete" onClick={() => { deleteAudioClip(selectedAudio.trackId, selectedAudio.clipId); setSelectedAudio(undefined); }}><I.Trash2 /> Delete clip</button>
           </div> : <div className="masterInspectorContent">
             <div className="inspectorSelection"><span className="blue"><I.Clapperboard /></span><div><small>SCENE CLIP {activeIndex + 1}</small><b>{activeScene.name}</b></div></div>
@@ -1473,6 +1490,7 @@ function VideoEditorWorkspace({
                   }}
                   onPointerDown={(event) => {
                     if ((event.target as HTMLElement).closest("button")) return;
+                    setSelectedTimelineIds([]); setSelectedAssetClipId(undefined); setSelectedAudio(undefined); setSelectedOverlayId(undefined);
                     const rect = event.currentTarget.getBoundingClientRect();
                     const sceneStart = timeline.starts[index] ?? 0;
                     onMasterFrame(
@@ -1676,14 +1694,35 @@ function AssetLibraryItem({ asset, folders, referenced, onRefresh }: { asset: St
 }
 
 function MasterOverlays({ overlays, frame }: { overlays: GlobalOverlay[]; frame: number }) {
-  return <div className="masterOverlays">{overlays.filter((overlay) => frame >= overlay.startFrame && frame < overlay.startFrame + overlay.durationInFrames).map((overlay) => <MasterOverlay key={overlay.id} overlay={overlay} />)}</div>;
+  return <div className="masterOverlays">{overlays.filter((overlay) => frame >= overlay.startFrame && frame < overlay.startFrame + overlay.durationInFrames).map((overlay) => <MasterOverlay key={overlay.id} overlay={overlay} frame={frame} />)}</div>;
 }
 
-function MasterOverlay({ overlay }: { overlay: GlobalOverlay }) {
+function MasterMediaClips({ clips, frame, fps, playing }: { clips: TimelineClip[]; frame: number; fps: number; playing: boolean }) {
+  return <div className="masterMediaClips">{clips.filter((clip) => frame >= clip.startFrame && frame < clip.startFrame + clip.durationInFrames).map((clip) => <MasterMediaClip key={clip.id} clip={clip} frame={frame} fps={fps} playing={playing} />)}</div>;
+}
+
+function MasterMediaClip({ clip, frame, fps, playing }: { clip: TimelineClip; frame: number; fps: number; playing: boolean }) {
+  const source = useAssetUrl(clip.assetId), videoRef = useRef<HTMLVideoElement>(null), localFrame = frame - clip.startFrame;
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || clip.type !== "video") return;
+    const desired = (clip.sourceStartFrame + Math.max(0, localFrame)) / fps;
+    if (Math.abs(video.currentTime - desired) > .12) video.currentTime = desired;
+    if (playing) void video.play().catch(() => undefined); else video.pause();
+  }, [clip.sourceStartFrame, clip.type, fps, localFrame, playing]);
+  if (!source.url) return null;
+  const style = { left: `${clip.x}%`, top: `${clip.y}%`, opacity: clip.opacity, transform: `translate(-50%, -50%) scale(${clip.scale})`, objectFit: clip.crop === "stretch" ? "fill" : clip.crop } as React.CSSProperties;
+  return clip.type === "video" ? <video ref={videoRef} className="masterMediaClip" src={source.url} style={style} muted playsInline preload="auto" /> : <img className="masterMediaClip" src={source.url} style={style} alt={clip.name} />;
+}
+
+function MasterOverlay({ overlay, frame }: { overlay: GlobalOverlay; frame: number }) {
   const asset = useAssetUrl(overlay.assetId), image = overlay.type === "logo" || overlay.type === "watermark";
+  const progress = clamp((frame - overlay.startFrame) / 15, 0, 1), animatedOpacity = overlay.animation === "fade" ? progress * overlay.opacity : overlay.opacity,
+    animatedTransform = overlay.animation === "slide-up" ? `translateY(${(1 - progress) * 24}px)` : undefined,
+    content = overlay.animation === "typewriter" ? overlay.content.slice(0, Math.ceil(overlay.content.length * clamp((frame - overlay.startFrame) / 45, 0, 1))) : overlay.content;
   return (
-    <div className={`masterOverlay ${overlay.type}`} style={{ left: `${overlay.x}%`, top: `${overlay.y}%`, width: `${overlay.width}%`, opacity: overlay.opacity, color: overlay.color, background: overlay.backgroundColor, fontSize: `${overlay.fontSize / 12.8}cqw`, fontWeight: overlay.fontWeight, textAlign: overlay.textAlign }}>
-      {image ? asset.url ? <img src={asset.url} alt={overlay.name} /> : <span><I.Image /> {overlay.name}</span> : overlay.content}
+    <div className={`masterOverlay ${overlay.type}`} style={{ left: `${overlay.x}%`, top: `${overlay.y}%`, width: `${overlay.width}%`, opacity: animatedOpacity, transform: animatedTransform, color: overlay.color, background: overlay.backgroundColor, fontFamily: overlay.fontFamily, fontSize: `${overlay.fontSize / 12.8}cqw`, fontWeight: overlay.fontWeight, textAlign: overlay.textAlign }}>
+      {image ? asset.url ? <img src={asset.url} alt={overlay.name} /> : <span><I.Image /> {overlay.name}</span> : content}
     </div>
   );
 }
@@ -3739,7 +3778,9 @@ function MasterExportDialog({ videoProject, onClose }: { videoProject: VideoProj
     durationSeconds = totalSourceFrames / videoProject.canvas.fps, totalFrames = Math.round(durationSeconds * exportFps),
     resolved = resolveMasterFrame(normalized, masterRenderFrame), composition = resolved.scene.composition,
     localRenderFrame = resolved.scene.sourceStartFrame + resolved.localFrame,
-    eta = progress > 0 ? Math.max(0, ((performance.now() - startedAt.current) / 1000) * (100 - progress) / progress) : 0;
+    eta = progress > 0 ? Math.max(0, ((performance.now() - startedAt.current) / 1000) * (100 - progress) / progress) : 0,
+    exportTracks = buildUnifiedTimelineTracks(normalized.scenes, normalized.audioTracks, normalized.globalOverlays, normalized.timelineTracks),
+    exportMediaClips = exportTracks.filter((track) => track.type === "image" || track.type === "video").flatMap((track) => track.clips).filter((clip) => clip.referenceType === "asset");
   useEffect(() => () => { cancelled.current = true; if (downloadUrl) URL.revokeObjectURL(downloadUrl); }, [downloadUrl]);
   const start = async () => {
     if (!stage.current) return;
@@ -3772,6 +3813,7 @@ function MasterExportDialog({ videoProject, onClose }: { videoProject: VideoProj
     <div className="renderStage" aria-hidden="true" style={{ width, height }}>
       <div ref={stage} data-media-frame={mediaReadyFrame} className={`renderComposition ${bgClass(composition.background.preset)}`} style={{ ...backgroundStyle(composition, localRenderFrame), width, height }}>
         {resolved.transition ? <TransitionPreview transition={resolved.transition} /> : <ScenePreviewLayer project={composition} frame={localRenderFrame} onMediaFrameReady={setMediaReadyFrame} />}
+        <MasterMediaClips clips={exportMediaClips} frame={masterRenderFrame} fps={videoProject.canvas.fps} playing={false} />
         <MasterOverlays overlays={videoProject.globalOverlays} frame={masterRenderFrame} />
       </div>
     </div>
