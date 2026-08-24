@@ -1,4 +1,4 @@
-import type { TemplateProject, VideoProject } from "./schema";
+import { buildUnifiedTimelineTracks, type AudioTrack, type TemplateProject, type VideoProject, type VideoScene } from "./schema";
 
 export function createDefaultProject(): TemplateProject {
   const now = new Date().toISOString();
@@ -181,53 +181,23 @@ export function createDefaultProject(): TemplateProject {
 
 export function createDefaultVideoProject(): VideoProject {
   const composition = createDefaultProject(),
-    sceneId = crypto.randomUUID();
+    sceneId = crypto.randomUUID(),
+    scenes: VideoScene[] = [{ id: sceneId, name: "Scene 1", order: 0, sourceStartFrame: 0, durationInFrames: composition.canvas.durationInFrames, transitionToNext: { type: "cut", durationInFrames: 15 }, composition, createdAt: composition.createdAt, updatedAt: composition.updatedAt }],
+    audioTracks: AudioTrack[] = [
+      { id: "music", name: "Music", type: "music", muted: false, volume: 1, clips: [] },
+      { id: "voiceover", name: "Voice-over", type: "voiceover", muted: false, volume: 1, clips: [] },
+      { id: "sfx", name: "Sound Effects", type: "sfx", muted: false, volume: 1, clips: [] },
+    ];
   return {
     schemaVersion: 3,
     id: composition.id,
     name: composition.name,
     canvas: { width: 1280, height: 720, fps: 30 },
-    scenes: [
-      {
-        id: sceneId,
-        name: "Scene 1",
-        order: 0,
-        sourceStartFrame: 0,
-        durationInFrames: composition.canvas.durationInFrames,
-        transitionToNext: { type: "cut", durationInFrames: 15 },
-        composition,
-        createdAt: composition.createdAt,
-        updatedAt: composition.updatedAt,
-      },
-    ],
+    scenes,
     activeSceneId: sceneId,
-    audioTracks: [
-      {
-        id: "music",
-        name: "Music",
-        type: "music",
-        muted: false,
-        volume: 1,
-        clips: [],
-      },
-      {
-        id: "voiceover",
-        name: "Voice-over",
-        type: "voiceover",
-        muted: false,
-        volume: 1,
-        clips: [],
-      },
-      {
-        id: "sfx",
-        name: "Sound Effects",
-        type: "sfx",
-        muted: false,
-        volume: 1,
-        clips: [],
-      },
-    ],
+    audioTracks,
     globalOverlays: [],
+    timelineTracks: buildUnifiedTimelineTracks(scenes, audioTracks, []),
     createdAt: composition.createdAt,
     updatedAt: composition.updatedAt,
   };

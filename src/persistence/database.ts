@@ -2,6 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 import {
   migrateVideoProjectData,
   videoProjectSchema,
+  buildUnifiedTimelineTracks,
   type VideoProject,
   type TemplateProject,
 } from "../project/schema";
@@ -152,6 +153,7 @@ export async function duplicateStoredProject(projectId: string) {
   copy.id = id; copy.name = `${source.name} Copy`; copy.createdAt = now; copy.updatedAt = now; copy.savedAt = now;
   copy.scenes.forEach((scene, index) => { scene.id = crypto.randomUUID(); scene.order = index; scene.createdAt = now; scene.updatedAt = now; scene.composition.id = crypto.randomUUID(); scene.composition.createdAt = now; scene.composition.updatedAt = now; });
   copy.activeSceneId = copy.scenes[0].id;
+  copy.timelineTracks = buildUnifiedTimelineTracks(copy.scenes, copy.audioTracks, copy.globalOverlays);
   await database.projects.put(copy);
   return copy as VideoProject;
 }

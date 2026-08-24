@@ -13,7 +13,7 @@ import type {
   GlobalOverlay,
   GlobalOverlayType,
 } from "../project/schema";
-import { defaultAudioTracks } from "../project/schema";
+import { buildUnifiedTimelineTracks, defaultAudioTracks } from "../project/schema";
 import { loadRecentProject, saveProject } from "../persistence/database";
 import { clamp } from "../animation/frame";
 import {
@@ -689,8 +689,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   persist: async () => {
     set({ saveStatus: "saving" });
     try {
-      await saveProject(get().videoProject);
-      set({ saveStatus: "saved" });
+      const synchronized = produce(get().videoProject, (draft) => {
+        draft.timelineTracks = buildUnifiedTimelineTracks(draft.scenes, draft.audioTracks, draft.globalOverlays);
+      });
+      await saveProject(synchronized);
+      set({ videoProject: synchronized, saveStatus: "saved" });
     } catch {
       set({ saveStatus: "error" });
     }

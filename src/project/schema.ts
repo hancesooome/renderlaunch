@@ -380,11 +380,62 @@ export const globalOverlaySchema = z.object({
   textAlign: z.enum(["left", "center", "right"]).default("center"),
 });
 
+export const timelineClipTypeSchema = z.enum(["scene", "video", "image", "text", "audio"]);
+export const timelineClipSchema = z.object({
+  id: z.string().min(1),
+  type: timelineClipTypeSchema,
+  name: z.string().min(1),
+  startFrame: z.number().int().nonnegative(),
+  durationInFrames: z.number().int().positive(),
+  sourceStartFrame: z.number().int().nonnegative().default(0),
+  referenceType: z.enum(["scene", "audio-clip", "overlay", "asset"]),
+  referenceId: z.string().min(1),
+  assetId: z.string().optional(),
+});
+export const timelineTrackSchema = z.object({
+  id: z.string().min(1),
+  type: timelineClipTypeSchema,
+  name: z.string().min(1),
+  order: z.number().int().nonnegative(),
+  locked: z.boolean().default(false),
+  muted: z.boolean().default(false),
+  visible: z.boolean().default(true),
+  clips: z.array(timelineClipSchema).default([]),
+});
+
 export const defaultAudioTracks = () => [
   { id: "music", name: "Music", type: "music" as const, muted: false, volume: 1, clips: [] },
   { id: "voiceover", name: "Voice-over", type: "voiceover" as const, muted: false, volume: 1, clips: [] },
   { id: "sfx", name: "Sound Effects", type: "sfx" as const, muted: false, volume: 1, clips: [] },
 ];
+
+export function buildUnifiedTimelineTracks(
+  scenes: Array<z.infer<typeof videoSceneSchema>>,
+  audioTracks: Array<z.infer<typeof audioTrackSchema>>,
+  overlays: Array<z.infer<typeof globalOverlaySchema>>,
+) {
+  const ordered = [...scenes].sort((a, b) => a.order - b.order), starts: number[] = [];
+  let cursor = 0;
+  ordered.forEach((scene, index) => {
+    starts.push(cursor);
+    const next = ordered[index + 1], transition = !next || scene.transitionToNext.type === "cut" ? 0 : Math.min(scene.transitionToNext.durationInFrames, scene.durationInFrames - 1, next.durationInFrames - 1);
+    cursor += scene.durationInFrames - Math.max(0, transition);
+  });
+  const tracks: Array<z.infer<typeof timelineTrackSchema>> = [{
+    id: "master-scenes", type: "scene", name: "Scenes", order: 0, locked: false, muted: false, visible: true,
+    clips: ordered.map((scene, index) => ({ id: `scene-clip:${scene.id}`, type: "scene", name: scene.name, startFrame: starts[index], durationInFrames: scene.durationInFrames, sourceStartFrame: scene.sourceStartFrame, referenceType: "scene", referenceId: scene.id })),
+  }, {
+    id: "master-images", type: "image", name: "Images & logos", order: 1, locked: false, muted: false, visible: true,
+    clips: overlays.filter((overlay) => overlay.type === "logo" || overlay.type === "watermark").map((overlay) => ({ id: `overlay-clip:${overlay.id}`, type: "image", name: overlay.name, startFrame: overlay.startFrame, durationInFrames: overlay.durationInFrames, sourceStartFrame: 0, referenceType: "overlay", referenceId: overlay.id, assetId: overlay.assetId })),
+  }, {
+    id: "master-text", type: "text", name: "Titles & captions", order: 2, locked: false, muted: false, visible: true,
+    clips: overlays.filter((overlay) => overlay.type !== "logo" && overlay.type !== "watermark").map((overlay) => ({ id: `overlay-clip:${overlay.id}`, type: "text", name: overlay.name, startFrame: overlay.startFrame, durationInFrames: overlay.durationInFrames, sourceStartFrame: 0, referenceType: "overlay", referenceId: overlay.id })),
+  }, {
+    id: "master-video", type: "video", name: "Video", order: 3, locked: false, muted: false, visible: true, clips: [],
+  }];
+  audioTracks.forEach((track, index) => tracks.push({ id: `master-audio:${track.id}`, type: "audio", name: track.name, order: 4 + index, locked: false, muted: track.muted, visible: true, clips: track.clips.map((clip) => ({ id: `audio-clip:${clip.id}`, type: "audio", name: clip.fileName, startFrame: clip.startFrame, durationInFrames: clip.durationInFrames, sourceStartFrame: clip.sourceStartFrame, referenceType: "audio-clip", referenceId: clip.id, assetId: clip.assetId })) }));
+  return tracks;
+}
 
 export const videoProjectSchema = z.object({
   schemaVersion: z.literal(3),
@@ -398,6 +449,7 @@ export const videoProjectSchema = z.object({
   scenes: z.array(videoSceneSchema).min(1),
   audioTracks: z.array(audioTrackSchema).default([]),
   globalOverlays: z.array(globalOverlaySchema).default([]),
+  timelineTracks: z.array(timelineTrackSchema).default([]),
   activeSceneId: z.string().min(1),
   thumbnailDataUrl: z.string().optional(),
   createdAt: z.string(),
@@ -415,35 +467,24 @@ export function migrateProjectData(value: unknown): unknown {
 export function migrateVideoProjectData(value: unknown): unknown {
   if (!value || typeof value !== "object") return value;
   const candidate = value as Record<string, unknown>;
-  if (candidate.schemaVersion === 3)
+  if (candidate.schemaVersion === 3) {
+    const normalizedScenes = Array.isArray(candidate.scenes)
+      ? candidate.scenes.map((scene) => {
+          if (!scene || typeof scene !== "object") return scene;
+          const item = scene as Record<string, unknown>, composition = item.composition as Record<string, unknown> | undefined, canvas = composition?.canvas as Record<string, unknown> | undefined;
+          return { ...item, sourceStartFrame: item.sourceStartFrame ?? 0, durationInFrames: item.durationInFrames ?? canvas?.durationInFrames ?? 450, transitionToNext: item.transitionToNext ?? { type: "cut", durationInFrames: 15 } };
+        })
+      : candidate.scenes;
+    const normalizedAudio = Array.isArray(candidate.audioTracks) && candidate.audioTracks.length ? candidate.audioTracks : defaultAudioTracks(),
+      normalizedOverlays = candidate.globalOverlays ?? [];
     return {
       ...candidate,
-      scenes: Array.isArray(candidate.scenes)
-        ? candidate.scenes.map((scene) => {
-            if (!scene || typeof scene !== "object") return scene;
-            const item = scene as Record<string, unknown>,
-              composition = item.composition as
-                Record<string, unknown> | undefined,
-              canvas = composition?.canvas as
-                Record<string, unknown> | undefined;
-            return {
-              ...item,
-              sourceStartFrame: item.sourceStartFrame ?? 0,
-              durationInFrames:
-                item.durationInFrames ?? canvas?.durationInFrames ?? 450,
-              transitionToNext: item.transitionToNext ?? {
-                type: "cut",
-                durationInFrames: 15,
-              },
-            };
-          })
-        : candidate.scenes,
-      audioTracks:
-        Array.isArray(candidate.audioTracks) && candidate.audioTracks.length
-          ? candidate.audioTracks
-          : defaultAudioTracks(),
-      globalOverlays: candidate.globalOverlays ?? [],
+      scenes: normalizedScenes,
+      audioTracks: normalizedAudio,
+      globalOverlays: normalizedOverlays,
+      timelineTracks: Array.isArray(candidate.timelineTracks) && candidate.timelineTracks.length ? candidate.timelineTracks : buildUnifiedTimelineTracks((normalizedScenes ?? []) as Array<z.infer<typeof videoSceneSchema>>, normalizedAudio as Array<z.infer<typeof audioTrackSchema>>, normalizedOverlays as Array<z.infer<typeof globalOverlaySchema>>),
     };
+  }
   const migratedComposition = migrateProjectData(value) as Record<
     string,
     unknown
@@ -483,6 +524,7 @@ export function migrateVideoProjectData(value: unknown): unknown {
       { id: "sfx", name: "Sound Effects", type: "sfx", muted: false, volume: 1, clips: [] },
     ],
     globalOverlays: [],
+    timelineTracks: buildUnifiedTimelineTracks([{ id: sceneId, name: "Scene 1", order: 0, sourceStartFrame: 0, durationInFrames: Number((migratedComposition.canvas as Record<string, unknown>)?.durationInFrames ?? 450), transitionToNext: { type: "cut", durationInFrames: 15 }, composition: migratedComposition as z.infer<typeof projectSchema>, createdAt, updatedAt }], defaultAudioTracks(), []),
     thumbnailDataUrl: migratedComposition.thumbnailDataUrl,
     createdAt,
     updatedAt,
@@ -498,6 +540,9 @@ export type AudioClip = z.infer<typeof audioClipSchema>;
 export type AudioTrackType = z.infer<typeof audioTrackTypeSchema>;
 export type GlobalOverlay = z.infer<typeof globalOverlaySchema>;
 export type GlobalOverlayType = z.infer<typeof globalOverlayTypeSchema>;
+export type TimelineClip = z.infer<typeof timelineClipSchema>;
+export type TimelineTrack = z.infer<typeof timelineTrackSchema>;
+export type TimelineClipType = z.infer<typeof timelineClipTypeSchema>;
 export type ProjectLayer = z.infer<typeof layerSchema>;
 export type KeyframeTrack = z.infer<typeof keyframeTrackSchema>;
 export type TextAnimationPreset = z.infer<typeof textAnimationPresetSchema>;
