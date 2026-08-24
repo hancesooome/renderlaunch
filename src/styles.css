@@ -16,3 +16,23 @@
 .previewStage{position:relative;width:calc(100% - 32px);max-width:calc(177.7778vh - 320px);aspect-ratio:16 / 9;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:15px;isolation:isolate}
 .previewModel{position:absolute;inset:0;width:auto;height:auto}
 .previewModel .threeCanvas{position:absolute;inset:0}
+.layer .replaceableOn{color:#087ef5;background:#e8f2ff;border-radius:5px}
+.userPreview{padding-left:330px}
+.userPreview .previewStage{max-width:calc(177.7778vh - 320px)}
+.userPreview .previewBar{left:calc(330px + 10%);right:10%}
+.userFields{position:absolute;left:0;top:0;bottom:0;width:310px;padding:82px 18px 22px;background:#fff;border-right:1px solid #dedee3;overflow-y:auto;z-index:3}
+.userFields>p{color:#6e6e73;line-height:1.5;margin:12px 0 18px}
+.userTemplateHead{display:flex;align-items:center;gap:12px}
+.userTemplateHead img{width:82px;aspect-ratio:16 / 9;object-fit:cover;border-radius:8px;border:1px solid #dedee3}
+.userTemplateHead small{color:#087ef5;font-weight:700;letter-spacing:.08em}
+.userTemplateHead h2{font-size:16px;margin:5px 0 0}
+.userUpload,.userField,.userColors{display:flex;flex-direction:column;gap:7px;margin-bottom:13px;padding:12px;border:1px solid #dedee3;border-radius:10px;background:#fff}
+.userUpload{cursor:pointer;font-weight:600}
+.userUpload svg{width:16px;color:#087ef5}
+.userUpload small{font-weight:400;color:#6e6e73;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.userField span,.userColors>span{font-weight:600}
+.userField textarea{min-height:72px;resize:vertical;border:1px solid #dcdce1;border-radius:7px;padding:8px;outline-color:#087ef5}
+.userColors label{display:flex;align-items:center;gap:8px;color:#555}
+.userColors input{width:40px;height:30px;border:0;background:transparent}
+.resetTemplate{width:100%;height:42px;border:1px solid #d7d7dc;border-radius:9px;display:flex;align-items:center;justify-content:center;gap:7px;background:#f8f8fa}
+@media(max-width:1000px){.userPreview{padding-left:270px}.userFields{width:250px}.userPreview .previewBar{left:280px;right:20px}}

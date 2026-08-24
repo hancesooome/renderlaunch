@@ -18,6 +18,7 @@ export const layerSchema = z.object({
   durationInFrames: z.number().int().positive(),
   visible: z.boolean(),
   locked: z.boolean(),
+  replaceable: z.boolean().default(false),
   zIndex: z.number().int(),
   color: z.string(),
   content: z.string().optional(),
@@ -202,6 +203,7 @@ export const projectSchema = z.object({
     angle: z.number().default(135),
   }),
   layers: z.array(layerSchema),
+  thumbnailDataUrl: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

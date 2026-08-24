@@ -52,6 +52,7 @@ type Props = {
   mode?: TransformMode;
   frameRequest?: number;
   autoFrame?: boolean;
+  cameraControls?: boolean;
   onTransform?: (value: TransformValue) => void;
   onCamera?: (
     position: [number, number, number],
@@ -67,6 +68,7 @@ export function SceneCanvas({
   mode = "translate",
   frameRequest = 0,
   autoFrame = false,
+  cameraControls = true,
   onTransform,
   onCamera,
 }: Props) {
@@ -146,6 +148,7 @@ export function SceneCanvas({
           bounds={bounds}
           frameRequest={frameRequest}
           autoFrame={autoFrame}
+          enabled={cameraControls}
           onCamera={onCamera}
         />
       </Canvas>
@@ -345,12 +348,14 @@ function CameraController({
   bounds,
   frameRequest,
   autoFrame,
+  enabled,
   onCamera,
 }: {
   project: TemplateProject;
   bounds?: NormalizedBounds;
   frameRequest: number;
   autoFrame: boolean;
+  enabled: boolean;
   onCamera?: Props["onCamera"];
 }) {
   const controls = useRef<OrbitControlsImpl>(null),
@@ -415,6 +420,7 @@ function CameraController({
     <OrbitControls
       ref={controls}
       makeDefault
+      enabled={enabled}
       enableDamping
       dampingFactor={0.08}
       onEnd={() => {

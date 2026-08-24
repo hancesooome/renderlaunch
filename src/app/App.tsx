@@ -60,7 +60,8 @@ export function App() {
     setTransformMode = useEditorStore((s) => s.setTransformMode);
   const [uploading, setUploading] = useState(false),
     [uploadError, setUploadError] = useState("");
-  const [frameRequest, setFrameRequest] = useState(0);
+  const [frameRequest, setFrameRequest] = useState(0),
+    [testingTemplate, setTestingTemplate] = useState(false);
   const replaceModel = async (file?: File) => {
     if (!file) return;
     setUploading(true);
@@ -100,6 +101,17 @@ export function App() {
       setUploading(false);
     }
   };
+  if (testingTemplate)
+    return (
+      <UserPreview
+        template={project}
+        frame={frame}
+        playing={playing}
+        onFrame={setFrame}
+        onPlay={setPlaying}
+        onClose={() => setTestingTemplate(false)}
+      />
+    );
   if (preview)
     return (
       <Preview
@@ -153,7 +165,18 @@ export function App() {
           <button onClick={() => setPreview(true)}>
             <I.Play /> Preview
           </button>
-          <button className="primary" onClick={() => void persist()}>
+          <button onClick={() => setTestingTemplate(true)}>
+            <I.UserRound /> Preview as User
+          </button>
+          <button
+            className="primary"
+            onClick={() => {
+              update((draft) => {
+                draft.thumbnailDataUrl = createTemplateThumbnail(draft);
+              });
+              void persist();
+            }}
+          >
             <I.Save /> Save Template
           </button>
         </div>
@@ -381,7 +404,7 @@ function LayerRow({
   layer: ProjectLayer;
   selected: boolean;
   onSelect: () => void;
-  onToggle: (key: "visible" | "locked") => void;
+  onToggle: (key: "visible" | "locked" | "replaceable") => void;
 }) {
   const Icon = icons[layer.type];
   return (
@@ -397,6 +420,17 @@ function LayerRow({
         }}
       >
         {layer.visible ? <I.Eye /> : <I.EyeOff />}
+      </button>
+      <button
+        className={layer.replaceable ? "replaceableOn" : ""}
+        aria-label={`${layer.replaceable ? "Make fixed" : "Make replaceable"} ${layer.name}`}
+        title={layer.replaceable ? "Replaceable in user preview" : "Fixed"}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle("replaceable");
+        }}
+      >
+        <I.Tag />
       </button>
       <button
         aria-label={`${layer.locked ? "Unlock" : "Lock"} ${layer.name}`}
@@ -1307,6 +1341,217 @@ function TimelineTrack({
   );
 }
 
+function UserPreview({
+  template,
+  frame,
+  playing,
+  onFrame,
+  onPlay,
+  onClose,
+}: {
+  template: TemplateProject;
+  frame: number;
+  playing: boolean;
+  onFrame: (frame: number) => void;
+  onPlay: (playing: boolean) => void;
+  onClose: () => void;
+}) {
+  const [project, setProject] = useState<TemplateProject>(() =>
+      structuredClone(template),
+    ),
+    [error, setError] = useState("");
+  const mutate = (recipe: (draft: TemplateProject) => void) =>
+    setProject((current) => {
+      const next = structuredClone(current);
+      recipe(next);
+      return next;
+    });
+  const replaceScreen = async (file?: File) => {
+    if (!file || !project.screen) return;
+    setError("");
+    try {
+      const type = await validateMedia(file),
+        assetId = await saveAsset(file);
+      mutate((draft) => {
+        if (!draft.screen) return;
+        draft.screen.mediaAssetId = assetId;
+        draft.screen.mediaFileName = file.name;
+        draft.screen.mediaType = type;
+        draft.screen.testPattern = false;
+      });
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Media upload failed.",
+      );
+    }
+  };
+  const replaceImage = async (layerId: string, file?: File) => {
+    if (!file) return;
+    setError("");
+    try {
+      if ((await validateMedia(file)) !== "image")
+        throw new Error("Logo fields require an image.");
+      const assetId = await saveAsset(file);
+      mutate((draft) => {
+        const layer = draft.layers.find((item) => item.id === layerId);
+        if (layer)
+          layer.media = { assetId, fileName: file.name, type: "image" };
+      });
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Image upload failed.",
+      );
+    }
+  };
+  const editableLayers = project.layers.filter(
+    (layer) => layer.replaceable && !layer.locked,
+  );
+  const screenEditable = editableLayers.some(
+    (layer) => layer.type === "screen-media",
+  );
+  const backgroundEditable = editableLayers.some(
+    (layer) => layer.type === "background",
+  );
+  return (
+    <div className="preview userPreview">
+      <button className="backPreview" onClick={onClose}>
+        <I.ChevronLeft /> Back to editor
+      </button>
+      <aside className="userFields">
+        <div className="userTemplateHead">
+          {template.thumbnailDataUrl && (
+            <img src={template.thumbnailDataUrl} alt="Template thumbnail" />
+          )}
+          <div>
+            <small>USER PREVIEW</small>
+            <h2>{template.name}</h2>
+          </div>
+        </div>
+        <p>Only fields marked with the tag icon can be changed here.</p>
+        {screenEditable && project.screen && (
+          <label className="userUpload">
+            <I.Upload /> Replace screen media
+            <small>
+              {project.screen.mediaFileName ?? "Choose image or video"}
+            </small>
+            <input
+              hidden
+              type="file"
+              accept="image/png,image/jpeg,image/webp,video/mp4,video/webm"
+              onChange={(event) => {
+                void replaceScreen(event.target.files?.[0]);
+                event.target.value = "";
+              }}
+            />
+          </label>
+        )}
+        {editableLayers
+          .filter((layer) => layer.type === "text")
+          .map((layer) => (
+            <label className="userField" key={layer.id}>
+              <span>{layer.name}</span>
+              <textarea
+                value={layer.content ?? ""}
+                onChange={(event) =>
+                  mutate((draft) => {
+                    const item = draft.layers.find(
+                      (value) => value.id === layer.id,
+                    );
+                    if (item) item.content = event.target.value;
+                  })
+                }
+              />
+            </label>
+          ))}
+        {editableLayers
+          .filter((layer) => layer.type === "image")
+          .map((layer) => (
+            <label className="userUpload" key={layer.id}>
+              <I.Image /> Replace {layer.name}
+              <small>{layer.media?.fileName ?? "Choose image"}</small>
+              <input
+                hidden
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(event) => {
+                  void replaceImage(layer.id, event.target.files?.[0]);
+                  event.target.value = "";
+                }}
+              />
+            </label>
+          ))}
+        {backgroundEditable && (
+          <div className="userColors">
+            <span>Background colors</span>
+            <label>
+              <input
+                type="color"
+                value={project.background.colorA}
+                onChange={(event) =>
+                  mutate((draft) => {
+                    draft.background.colorA = event.target.value;
+                  })
+                }
+              />
+              Start
+            </label>
+            <label>
+              <input
+                type="color"
+                value={project.background.colorB}
+                onChange={(event) =>
+                  mutate((draft) => {
+                    draft.background.colorB = event.target.value;
+                  })
+                }
+              />
+              End
+            </label>
+          </div>
+        )}
+        {error && <div className="modelError">{error}</div>}
+        <button
+          className="resetTemplate"
+          onClick={() => {
+            setProject(structuredClone(template));
+            onPlay(false);
+            onFrame(0);
+            setError("");
+          }}
+        >
+          <I.RotateCcw /> Restore template defaults
+        </button>
+      </aside>
+      <div
+        className={`previewStage ${bgClass(project.background.preset)}`}
+        style={backgroundStyle(project)}
+      >
+        <div className="canvasGlow" />
+        {project.model?.assetId ? (
+          <div className="previewModel">
+            <SceneCanvas
+              project={project}
+              frame={frame}
+              autoFrame={false}
+              cameraControls={false}
+            />
+          </div>
+        ) : (
+          <Phone frame={frame} project={project} />
+        )}
+        <PreviewOverlays project={project} frame={frame} />
+      </div>
+      <PreviewPlayback
+        project={project}
+        frame={frame}
+        playing={playing}
+        onFrame={onFrame}
+        onPlay={onPlay}
+      />
+    </div>
+  );
+}
+
 function Preview({
   project,
   frame,
@@ -1334,29 +1579,57 @@ function Preview({
         <div className="canvasGlow" />
         {project.model?.assetId ? (
           <div className="previewModel">
-            <SceneCanvas project={project} frame={frame} autoFrame={false} />
+            <SceneCanvas
+              project={project}
+              frame={frame}
+              autoFrame={false}
+              cameraControls={false}
+            />
           </div>
         ) : (
           <Phone frame={frame} project={project} />
         )}
         <PreviewOverlays project={project} frame={frame} />
       </div>
-      <div className="previewBar">
-        <button onClick={() => onPlay(!playing)}>
-          {playing ? <I.Pause /> : <I.Play />}
-        </button>
-        <input
-          type="range"
-          min="0"
-          max={project.canvas.durationInFrames - 1}
-          value={frame}
-          onChange={(e) => onFrame(Number(e.target.value))}
-        />
-        <b>
-          {formatTimecode(frame, project.canvas.fps)} /{" "}
-          {formatTimecode(project.canvas.durationInFrames, project.canvas.fps)}
-        </b>
-      </div>
+      <PreviewPlayback
+        project={project}
+        frame={frame}
+        playing={playing}
+        onFrame={onFrame}
+        onPlay={onPlay}
+      />
+    </div>
+  );
+}
+function PreviewPlayback({
+  project,
+  frame,
+  playing,
+  onFrame,
+  onPlay,
+}: {
+  project: TemplateProject;
+  frame: number;
+  playing: boolean;
+  onFrame: (frame: number) => void;
+  onPlay: (playing: boolean) => void;
+}) {
+  return (
+    <div className="previewBar">
+      <button onClick={() => onPlay(!playing)}>
+        {playing ? <I.Pause /> : <I.Play />}
+      </button>
+      <input
+        type="range"
+        min="0"
+        max={project.canvas.durationInFrames - 1}
+        value={frame}
+        onChange={(event) => onFrame(Number(event.target.value))}
+      />
+      <b>
+        {formatTimecode(frame, project.canvas.fps)} /{" "}
+        {formatTimecode(project.canvas.durationInFrames, project.canvas.fps)}
+      </b>
     </div>
   );
 }
@@ -2855,6 +3128,24 @@ function backgroundStyle(project: TemplateProject) {
       : "#ececef",
   };
 }
+function createTemplateThumbnail(project: TemplateProject) {
+  const title =
+      project.layers.find((layer) => layer.type === "text")?.content ??
+      project.name,
+    escape = (value: string) =>
+      value.replace(/[&<>"']/g, (character) => {
+        const entities: Record<string, string> = {
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&apos;",
+        };
+        return entities[character];
+      }),
+    svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360"><defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="${project.background.colorA}"/><stop offset="1" stop-color="${project.background.colorB}"/></linearGradient></defs><rect width="640" height="360" rx="20" fill="url(#g)"/><text x="48" y="154" fill="#152144" font-family="Inter,Arial" font-size="34" font-weight="700">${escape(title).slice(0, 34)}</text><text x="48" y="205" fill="#152144" opacity=".65" font-family="Inter,Arial" font-size="18">${escape(project.name).slice(0, 48)}</text><rect x="470" y="55" width="105" height="235" rx="24" fill="#111827" transform="rotate(8 522 172)"/><rect x="480" y="67" width="85" height="211" rx="18" fill="#dbeafe" transform="rotate(8 522 172)"/></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
 function createOverlayLayer(
   id: string,
   name: string,
@@ -2869,6 +3160,7 @@ function createOverlayLayer(
     durationInFrames: duration,
     visible: true,
     locked: false,
+    replaceable: true,
     zIndex: 10,
     color: "#c0aaff",
     content: preset[0],
