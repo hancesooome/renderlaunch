@@ -1737,6 +1737,12 @@ function Timeline({
                 00:{String(second).padStart(2, "0")}
               </span>
             ))}
+            <i
+              className="rulerPlayhead"
+              style={{
+                left: `calc(10px + ${frame / duration} * (100% - 20px))`,
+              }}
+            />
           </div>
           <div
             className="playhead"
