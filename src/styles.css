@@ -785,6 +785,7 @@ footer {
 }
 .playhead {
   position: absolute;
+  left: calc(305px + var(--timeline-progress, 0) * (100% - 315px));
   top: 20px;
   bottom: 0;
   width: 2px;
@@ -890,7 +891,7 @@ footer {
     margin-left: 250px;
   }
   .playhead {
-    left: calc(250px + var(--x)) !important;
+    left: calc(260px + var(--timeline-progress, 0) * (100% - 270px)) !important;
   }
   .phone {
     width: 180px;
@@ -1295,6 +1296,8 @@ footer {
 .tracks {
   height: 200px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
 }
 .previewOverlays .overlayItem {
   pointer-events: none;
@@ -2065,6 +2068,19 @@ header > .icon {
   background: var(--ui-hover);
   color: var(--ui-accent);
 }
+.propertyLabel button {
+  color: var(--ui-muted);
+  border: 1px solid var(--ui-border-soft);
+}
+.propertyLabel button.animated {
+  color: #8c73ff;
+  border-color: #8c73ff66;
+}
+.propertyLabel button.current {
+  color: #087ef5;
+  background: #087ef51a;
+  border-color: #087ef5;
+}
 .propertyLabel svg {
   width: 12px;
   fill: currentColor;
@@ -2162,6 +2178,57 @@ header > .icon {
 }
 :root[data-theme="dark"] .propertyTrack {
   background: var(--ui-panel);
+}
+.keyframeHint {
+  margin: 0 0 10px;
+  color: var(--ui-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.inspectorKeyframes {
+  display: grid;
+  gap: 5px;
+}
+.inspectorKeyframes button {
+  min-height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--ui-border-soft);
+  border-radius: 7px;
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center;
+  gap: 7px;
+  text-align: left;
+  color: var(--ui-muted);
+  background: var(--ui-input);
+}
+.inspectorKeyframes button:hover {
+  border-color: var(--ui-accent);
+  color: var(--ui-text);
+}
+.inspectorKeyframes button svg {
+  width: 13px;
+  fill: transparent;
+}
+.inspectorKeyframes button.animated {
+  color: #8c73ff;
+  border-color: #8c73ff66;
+}
+.inspectorKeyframes button.animated svg {
+  fill: currentColor;
+}
+.inspectorKeyframes button.current {
+  color: #087ef5;
+  border-color: #087ef5;
+  background: #087ef514;
+}
+.inspectorKeyframes small {
+  min-width: 18px;
+  padding: 2px 5px;
+  border-radius: 9px;
+  text-align: center;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 12%, transparent);
 }
 @media (max-width: 1250px) {
   .propertyTrack {

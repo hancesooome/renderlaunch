@@ -469,6 +469,7 @@ export function App() {
         <Inspector
           project={project}
           layer={selected}
+          frame={frame}
           update={update}
           mode={transformMode}
           setMode={setTransformMode}
@@ -598,12 +599,14 @@ function ThemeMenu({
 function Inspector({
   project,
   layer,
+  frame,
   update,
   mode,
   setMode,
 }: {
   project: TemplateProject;
   layer: ProjectLayer;
+  frame: number;
   update: (recipe: (draft: TemplateProject) => void) => void;
   mode: TransformMode;
   setMode: (mode: TransformMode) => void;
@@ -636,14 +639,23 @@ function Inspector({
     }
   };
   if (layer.type === "camera")
-    return <CameraInspector project={project} update={update} />;
+    return <CameraInspector project={project} frame={frame} update={update} />;
   if (layer.type === "lighting")
-    return <LightingInspector project={project} update={update} />;
+    return (
+      <LightingInspector project={project} frame={frame} update={update} />
+    );
   if (layer.type === "background")
-    return <BackgroundInspector project={project} update={update} />;
+    return (
+      <BackgroundInspector project={project} frame={frame} update={update} />
+    );
   if (layer.type === "text" || layer.type === "image")
     return (
-      <OverlayInspectorV2 project={project} layer={layer} update={update} />
+      <OverlayInspectorV2
+        project={project}
+        layer={layer}
+        frame={frame}
+        update={update}
+      />
     );
   return (
     <aside className="inspector">
@@ -651,6 +663,12 @@ function Inspector({
         <h2>{layer.name}</h2>
         <I.MoreHorizontal />
       </div>
+      <InspectorKeyframes
+        project={project}
+        layer={layer}
+        frame={frame}
+        update={update}
+      />
       <Panel title="Direct Controls">
         <div className="transformModes">
           <button
@@ -1479,9 +1497,11 @@ function Timeline({
           </div>
           <div
             className="playhead"
-            style={{
-              left: `calc(295px + ${frame / duration} * (100% - 315px))`,
-            }}
+            style={
+              {
+                "--timeline-progress": frame / duration,
+              } as React.CSSProperties
+            }
           >
             <i />
           </div>
@@ -1531,7 +1551,7 @@ function TimelineTrack({
       start: layer.startFrame,
       length: layer.durationInFrames,
     }),
-    [expanded, setExpanded] = useState(false),
+    [expanded, setExpanded] = useState(selected),
     drag = useRef<{
       mode: "move" | "left" | "right";
       x: number;
@@ -1545,6 +1565,9 @@ function TimelineTrack({
     if (!drag.current)
       setPreview({ start: layer.startFrame, length: layer.durationInFrames });
   }, [layer.durationInFrames, layer.startFrame]);
+  useEffect(() => {
+    if (selected) setExpanded(true);
+  }, [selected]);
   const begin = (
     event: React.PointerEvent<HTMLElement>,
     mode: "move" | "left" | "right",
@@ -1887,6 +1910,97 @@ function getKeyframeChannels(
   return [];
 }
 
+function InspectorKeyframes({
+  project,
+  layer,
+  frame,
+  update,
+}: {
+  project: TemplateProject;
+  layer: ProjectLayer;
+  frame: number;
+  update: (recipe: (draft: TemplateProject) => void) => void;
+}) {
+  const channels = getKeyframeChannels(project, layer),
+    roundedFrame = Math.round(frame);
+  if (!channels.length) return null;
+  return (
+    <Panel title={`Keyframes · Frame ${roundedFrame}`}>
+      <p className="keyframeHint">
+        Click a diamond to add or remove a keyframe at the playhead.
+      </p>
+      <div className="inspectorKeyframes">
+        {channels.map((channel) => {
+          const track = findKeyframeTrack(
+              project.keyframeTracks,
+              layer.id,
+              channel.property,
+            ),
+            current = track?.keyframes.some(
+              (keyframe) => keyframe.frame === roundedFrame,
+            );
+          return (
+            <button
+              key={channel.property}
+              className={`${track ? "animated" : ""} ${current ? "current" : ""}`}
+              title={`${current ? "Remove" : "Add"} keyframe at frame ${roundedFrame}`}
+              onClick={() =>
+                update((draft) => {
+                  const editableTrack = findKeyframeTrack(
+                    draft.keyframeTracks,
+                    layer.id,
+                    channel.property,
+                  );
+                  const editableCurrent = editableTrack?.keyframes.find(
+                    (keyframe) => keyframe.frame === roundedFrame,
+                  );
+                  if (editableTrack && editableCurrent) {
+                    editableTrack.keyframes = editableTrack.keyframes.filter(
+                      (keyframe) => keyframe.id !== editableCurrent.id,
+                    ) as typeof editableTrack.keyframes;
+                  } else if (channel.valueType === "number") {
+                    setNumericKeyframe(
+                      draft,
+                      layer.id,
+                      channel.property,
+                      roundedFrame,
+                      evaluateNumericProperty(
+                        draft.keyframeTracks,
+                        layer.id,
+                        channel.property,
+                        roundedFrame,
+                        channel.value,
+                      ),
+                    );
+                  } else {
+                    setColorKeyframe(
+                      draft,
+                      layer.id,
+                      channel.property,
+                      roundedFrame,
+                      evaluateColorProperty(
+                        draft.keyframeTracks,
+                        layer.id,
+                        channel.property,
+                        roundedFrame,
+                        channel.value,
+                      ),
+                    );
+                  }
+                })
+              }
+            >
+              <I.Diamond />
+              <span>{channel.label}</span>
+              {track && <small>{track.keyframes.length}</small>}
+            </button>
+          );
+        })}
+      </div>
+    </Panel>
+  );
+}
+
 function KeyframePropertyRow({
   project,
   layer,
@@ -1914,7 +2028,22 @@ function KeyframePropertyRow({
       channel.property,
     ),
     [drag, setDrag] = useState<{ id: string; frame: number }>();
-  const add = () => {
+  const currentKeyframe = track?.keyframes.find(
+    (keyframe) => keyframe.frame === Math.round(frame),
+  );
+  const toggle = () => {
+    if (currentKeyframe) {
+      update((draft) => {
+        const editableTrack = draft.keyframeTracks.find(
+          (item) => item.id === track?.id,
+        );
+        if (editableTrack)
+          editableTrack.keyframes = editableTrack.keyframes.filter(
+            (keyframe) => keyframe.id !== currentKeyframe.id,
+          ) as typeof editableTrack.keyframes;
+      });
+      return;
+    }
     update((draft) => {
       if (channel.valueType === "number")
         setNumericKeyframe(
@@ -1950,11 +2079,15 @@ function KeyframePropertyRow({
     <div className="propertyTrack">
       <div className="propertyLabel">
         <span>{channel.label}</span>
-        <button title={`Add ${channel.label} keyframe`} onClick={add}>
+        <button
+          className={`${track ? "animated" : ""} ${currentKeyframe ? "current" : ""}`}
+          title={`${currentKeyframe ? "Remove" : "Add"} ${channel.label} keyframe at frame ${Math.round(frame)}`}
+          onClick={toggle}
+        >
           <I.Diamond />
         </button>
       </div>
-      <div className="keyframeLane" onDoubleClick={add}>
+      <div className="keyframeLane" onDoubleClick={toggle}>
         {track?.keyframes.map((keyframe) => {
           const shownFrame =
             drag && drag.id === keyframe.id ? drag.frame : keyframe.frame;
@@ -1964,7 +2097,9 @@ function KeyframePropertyRow({
               className={`keyframeDiamond ${
                 selectedKeyframe?.keyframeId === keyframe.id ? "selected" : ""
               }`}
-              style={{ left: `${(shownFrame / duration) * 100}%` }}
+              style={{
+                left: `calc(10px + ${shownFrame / duration} * (100% - 20px))`,
+              }}
               title={`Frame ${shownFrame}`}
               onPointerDown={(event) => {
                 event.stopPropagation();
@@ -1985,7 +2120,9 @@ function KeyframePropertyRow({
                   id: activeDrag.id,
                   frame: Math.round(
                     clamp(
-                      ((event.clientX - rect.left) / rect.width) * duration,
+                      ((event.clientX - rect.left - 10) /
+                        Math.max(1, rect.width - 20)) *
+                        duration,
                       0,
                       duration - 1,
                     ),
@@ -3252,9 +3389,11 @@ function CompositionTools({
 }
 function CameraInspector({
   project,
+  frame,
   update,
 }: {
   project: TemplateProject;
+  frame: number;
   update: (recipe: (draft: TemplateProject) => void) => void;
 }) {
   const camera = project.camera ?? {
@@ -3270,6 +3409,12 @@ function CameraInspector({
         <h2>Camera</h2>
         <I.Video />
       </div>
+      <InspectorKeyframes
+        project={project}
+        layer={project.layers.find((item) => item.type === "camera")!}
+        frame={frame}
+        update={update}
+      />
       <Panel title="Camera View">
         <label>Position</label>
         <div className="triple">
@@ -3346,9 +3491,11 @@ function CameraInspector({
 }
 function LightingInspector({
   project,
+  frame,
   update,
 }: {
   project: TemplateProject;
+  frame: number;
   update: (recipe: (draft: TemplateProject) => void) => void;
 }) {
   const lighting = project.lighting;
@@ -3358,6 +3505,12 @@ function LightingInspector({
         <h2>Lighting</h2>
         <I.Sun />
       </div>
+      <InspectorKeyframes
+        project={project}
+        layer={project.layers.find((item) => item.type === "lighting")!}
+        frame={frame}
+        update={update}
+      />
       <Panel title="Studio Lighting">
         <Select
           label="Preset"
@@ -3474,9 +3627,11 @@ function LightingInspector({
 }
 function BackgroundInspector({
   project,
+  frame,
   update,
 }: {
   project: TemplateProject;
+  frame: number;
   update: (recipe: (draft: TemplateProject) => void) => void;
 }) {
   const background = project.background;
@@ -3486,6 +3641,12 @@ function BackgroundInspector({
         <h2>Background</h2>
         <I.PanelTop />
       </div>
+      <InspectorKeyframes
+        project={project}
+        layer={project.layers.find((item) => item.type === "background")!}
+        frame={frame}
+        update={update}
+      />
       <Panel title="Canvas Background">
         <Select
           label="Preset"
@@ -3574,10 +3735,12 @@ function BackgroundInspector({
 function OverlayInspectorV2({
   project,
   layer,
+  frame,
   update,
 }: {
   project: TemplateProject;
   layer: ProjectLayer;
+  frame: number;
   update: (recipe: (draft: TemplateProject) => void) => void;
 }) {
   const setSelected = useEditorStore((s) => s.setSelectedLayer),
@@ -3612,6 +3775,12 @@ function OverlayInspectorV2({
         <h2>{layer.name}</h2>
         <I.MoreHorizontal />
       </div>
+      <InspectorKeyframes
+        project={project}
+        layer={layer}
+        frame={frame}
+        update={update}
+      />
       {layer.type === "text" && (
         <Panel title="Content">
           <textarea
