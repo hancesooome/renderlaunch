@@ -284,7 +284,7 @@ export function App() {
         onDeleteScene={() => deleteScene(videoProject.activeSceneId)}
         onReorderScene={reorderScene}
         onTrimScene={trimScene}
-        onSplitScene={() => splitScene(videoProject.activeSceneId, frame)}
+        onSplitScene={splitScene}
         onOpenScene={() => {
           const active = videoProject.scenes.find(
             (scene) => scene.id === videoProject.activeSceneId,
@@ -794,7 +794,7 @@ function VideoEditorWorkspace({
     sourceStartFrame: number,
     durationInFrames: number,
   ) => void;
-  onSplitScene: () => void;
+  onSplitScene: (sceneId: string, offsetFrame: number) => void;
   onOpenScene: () => void;
   onSave: () => void;
 }) {
@@ -805,7 +805,17 @@ function VideoEditorWorkspace({
       sourceStartFrame: number;
       durationInFrames: number;
     }>();
-  const scenes = [...videoProject.scenes].sort((a, b) => a.order - b.order),
+  const scenes = [...videoProject.scenes]
+      .sort((a, b) => a.order - b.order)
+      .map((scene) => ({
+        ...scene,
+        sourceStartFrame: Number.isFinite(scene.sourceStartFrame)
+          ? scene.sourceStartFrame
+          : 0,
+        durationInFrames: Number.isFinite(scene.durationInFrames)
+          ? scene.durationInFrames
+          : scene.composition.canvas.durationInFrames,
+      })),
     activeScene =
       scenes.find((scene) => scene.id === videoProject.activeSceneId) ??
       scenes[0],
@@ -845,7 +855,7 @@ function VideoEditorWorkspace({
         visibleFrame > 0
       ) {
         event.preventDefault();
-        onSplitScene();
+        onSplitScene(activeScene.id, visibleFrame);
       }
     };
     window.addEventListener("keydown", shortcuts);
@@ -1068,7 +1078,7 @@ function VideoEditorWorkspace({
                 visibleFrame <= 0 ||
                 visibleFrame >= activeScene.durationInFrames
               }
-              onClick={onSplitScene}
+              onClick={() => onSplitScene(activeScene.id, visibleFrame)}
             >
               <I.Scissors /> Split
             </button>
@@ -1135,7 +1145,6 @@ function VideoEditorWorkspace({
                   style={{
                     width: `${(preview.durationInFrames / totalFrames) * 100}%`,
                   }}
-                  onClick={() => onSelectScene(scene.id)}
                   onPointerDown={(event) => {
                     if ((event.target as HTMLElement).closest("button")) return;
                     const rect = event.currentTarget.getBoundingClientRect();

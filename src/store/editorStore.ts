@@ -346,29 +346,37 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const sourceIndex = state.videoProject.scenes.findIndex(
           (scene) => scene.id === sceneId,
         ),
-        source = state.videoProject.scenes[sourceIndex],
+        source = state.videoProject.scenes[sourceIndex];
+      if (!source) return state;
+      const sourceStartFrame = Number.isFinite(source.sourceStartFrame)
+          ? source.sourceStartFrame
+          : 0,
+        sourceDuration = Number.isFinite(source.durationInFrames)
+          ? source.durationInFrames
+          : source.composition.canvas.durationInFrames,
         split = Math.round(offsetFrame);
-      if (!source || split <= 0 || split >= source.durationInFrames)
+      if (!Number.isFinite(split) || split <= 0 || split >= sourceDuration)
         return state;
       const now = new Date().toISOString(),
         secondId = crypto.randomUUID(),
+        secondComposition = structuredClone(source.composition),
         videoProject = produce(state.videoProject, (draft) => {
-          const first = draft.scenes[sourceIndex],
-            composition = structuredClone(first.composition);
-          composition.id = crypto.randomUUID();
-          composition.name = `${first.name} Part 2`;
-          composition.createdAt = now;
-          composition.updatedAt = now;
+          const first = draft.scenes[sourceIndex];
+          secondComposition.id = crypto.randomUUID();
+          secondComposition.name = `${first.name} Part 2`;
+          secondComposition.createdAt = now;
+          secondComposition.updatedAt = now;
+          first.sourceStartFrame = sourceStartFrame;
           first.durationInFrames = split;
           first.updatedAt = now;
           draft.scenes.splice(sourceIndex + 1, 0, {
             id: secondId,
-            name: composition.name,
+            name: secondComposition.name,
             order: sourceIndex + 1,
-            sourceStartFrame: first.sourceStartFrame + split,
-            durationInFrames: source.durationInFrames - split,
+            sourceStartFrame: sourceStartFrame + split,
+            durationInFrames: sourceDuration - split,
             thumbnailDataUrl: first.thumbnailDataUrl,
-            composition,
+            composition: secondComposition,
             createdAt: now,
             updatedAt: now,
           });
