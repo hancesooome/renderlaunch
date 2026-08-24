@@ -12,6 +12,7 @@ import type {
   AudioClip,
   GlobalOverlay,
   GlobalOverlayType,
+  TimelineClipType,
 } from "../project/schema";
 import { buildUnifiedTimelineTracks, defaultAudioTracks } from "../project/schema";
 import { loadRecentProject, saveProject } from "../persistence/database";
@@ -85,6 +86,10 @@ type EditorState = {
   openVideoProject: (videoProject: VideoProject) => void;
   createVideoProject: () => void;
   addSceneFromTemplate: (composition: TemplateProject) => void;
+  insertSceneFromTemplate: (composition: TemplateProject, targetIndex: number) => void;
+  addTimelineAssetClip: (type: Extract<TimelineClipType, "image" | "video">, asset: { id: string; name: string }, startFrame: number, durationInFrames: number) => void;
+  updateTimelineAssetClip: (clipId: string, patch: { startFrame?: number; durationInFrames?: number; sourceStartFrame?: number }) => void;
+  deleteTimelineAssetClip: (clipId: string) => void;
   undo: () => void;
   redo: () => void;
   persist: () => Promise<void>;
@@ -662,6 +667,40 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       });
       return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, project: cloned, currentFrame: 0, masterFrame: sceneMasterStart(videoProject, sceneId), playing: false, selectedLayerId: "phone", saveStatus: "unsaved" };
     }),
+  insertSceneFromTemplate: (composition, targetIndex) =>
+    set((state) => {
+      const now = new Date().toISOString(), sceneId = crypto.randomUUID(), cloned = structuredClone(composition), index = Math.round(clamp(targetIndex, 0, state.videoProject.scenes.length));
+      cloned.id = crypto.randomUUID(); cloned.createdAt = now; cloned.updatedAt = now;
+      const videoProject = produce(state.videoProject, (draft) => {
+        draft.scenes.splice(index, 0, { id: sceneId, name: cloned.name, order: index, sourceStartFrame: 0, durationInFrames: cloned.canvas.durationInFrames, transitionToNext: { type: "cut", durationInFrames: 15 }, thumbnailDataUrl: cloned.thumbnailDataUrl, composition: cloned, createdAt: now, updatedAt: now });
+        normalizeSceneOrder(draft.scenes); draft.activeSceneId = sceneId; draft.timelineTracks = buildUnifiedTimelineTracks(draft.scenes, draft.audioTracks, draft.globalOverlays, draft.timelineTracks); draft.updatedAt = now;
+      });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, project: cloned, currentFrame: 0, masterFrame: sceneMasterStart(videoProject, sceneId), playing: false, selectedLayerId: "phone", saveStatus: "unsaved" };
+    }),
+  addTimelineAssetClip: (type, asset, startFrame, durationInFrames) =>
+    set((state) => {
+      const videoProject = produce(state.videoProject, (draft) => {
+        draft.timelineTracks = buildUnifiedTimelineTracks(draft.scenes, draft.audioTracks, draft.globalOverlays, draft.timelineTracks);
+        const track = draft.timelineTracks.find((item) => item.type === type)!;
+        const duration = Math.max(1, Math.round(durationInFrames)), total = resolveMasterFrame(draft, Number.MAX_SAFE_INTEGER).totalFrames;
+        let available = Math.round(clamp(startFrame, 0, Math.max(0, total - duration)));
+        for (const clip of [...track.clips].sort((a, b) => a.startFrame - b.startFrame)) if (available < clip.startFrame + clip.durationInFrames && available + duration > clip.startFrame) available = clip.startFrame + clip.durationInFrames;
+        available = Math.round(clamp(available, 0, Math.max(0, total - duration)));
+        track.clips.push({ id: crypto.randomUUID(), type, name: asset.name, startFrame: available, durationInFrames: Math.min(duration, total - available), sourceStartFrame: 0, referenceType: "asset", referenceId: asset.id, assetId: asset.id });
+        draft.updatedAt = new Date().toISOString();
+      });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
+  updateTimelineAssetClip: (clipId, patch) =>
+    set((state) => {
+      const videoProject = produce(state.videoProject, (draft) => { const clip = draft.timelineTracks.flatMap((track) => track.clips).find((item) => item.id === clipId && item.referenceType === "asset"); if (clip) Object.assign(clip, patch); draft.updatedAt = new Date().toISOString(); });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
+  deleteTimelineAssetClip: (clipId) =>
+    set((state) => {
+      const videoProject = produce(state.videoProject, (draft) => { draft.timelineTracks.forEach((track) => { track.clips = track.clips.filter((clip) => clip.id !== clipId || clip.referenceType !== "asset"); }); draft.updatedAt = new Date().toISOString(); });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
   undo: () =>
     set((state) => {
       const previous = state.past[state.past.length - 1];
@@ -690,7 +729,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({ saveStatus: "saving" });
     try {
       const synchronized = produce(get().videoProject, (draft) => {
-        draft.timelineTracks = buildUnifiedTimelineTracks(draft.scenes, draft.audioTracks, draft.globalOverlays);
+        draft.timelineTracks = buildUnifiedTimelineTracks(draft.scenes, draft.audioTracks, draft.globalOverlays, draft.timelineTracks);
       });
       await saveProject(synchronized);
       set({ videoProject: synchronized, saveStatus: "saved" });

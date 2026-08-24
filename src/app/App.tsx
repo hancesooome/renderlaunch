@@ -36,7 +36,9 @@ import type {
   AudioTrack,
   GlobalOverlay,
   GlobalOverlayType,
+  TimelineTrack,
 } from "../project/schema";
+import { buildUnifiedTimelineTracks } from "../project/schema";
 import {
   resolveMasterFrame,
   sceneStarts,
@@ -890,6 +892,8 @@ function VideoEditorWorkspace({
     [assetSearch, setAssetSearch] = useState(""),
     [assetFilter, setAssetFilter] = useState<"all" | "image" | "video" | "audio" | "model">("all"),
     [assetView, setAssetView] = useState<"list" | "grid">("list"),
+    [masterSceneTemplates, setMasterSceneTemplates] = useState<StoredSceneTemplate[]>([]),
+    [dragTargetTrack, setDragTargetTrack] = useState<string>(),
     [masterLeftWidth, setMasterLeftWidth] = useState(248),
     [masterRightWidth, setMasterRightWidth] = useState(276),
     [masterTimelineHeight, setMasterTimelineHeight] = useState(() => Math.round(clamp(window.innerHeight * .38, 260, 460))),
@@ -910,6 +914,9 @@ function VideoEditorWorkspace({
   const addGlobalOverlay = useEditorStore((state) => state.addGlobalOverlay),
     updateGlobalOverlay = useEditorStore((state) => state.updateGlobalOverlay),
     deleteGlobalOverlay = useEditorStore((state) => state.deleteGlobalOverlay);
+  const insertSceneFromTemplate = useEditorStore((state) => state.insertSceneFromTemplate),
+    addTimelineAssetClip = useEditorStore((state) => state.addTimelineAssetClip),
+    deleteTimelineAssetClip = useEditorStore((state) => state.deleteTimelineAssetClip);
   const normalizedVideoProject = {
       ...videoProject,
       scenes: videoProject.scenes.map((scene) => ({
@@ -946,6 +953,9 @@ function VideoEditorWorkspace({
       : expectedMasterFrame,
     playback = resolveMasterFrame(normalizedVideoProject, shownMasterFrame),
     nextScene = scenes[activeIndex + 1];
+  const unifiedTimelineTracks = buildUnifiedTimelineTracks(scenes, videoProject.audioTracks, videoProject.globalOverlays, videoProject.timelineTracks),
+    videoTimelineTrack = unifiedTimelineTracks.find((track) => track.type === "video")!,
+    imageTimelineTrack = unifiedTimelineTracks.find((track) => track.type === "image")!;
   const selectedClip = selectedAudio
     ? videoProject.audioTracks
         .find((track) => track.id === selectedAudio.trackId)
@@ -956,7 +966,7 @@ function VideoEditorWorkspace({
     const [assets, folders] = await Promise.all([listAssets(), listAssetFolders()]);
     setLibraryAssets(assets); setAssetFolders(folders);
   };
-  useEffect(() => { if (masterLibraryTab === "assets") void refreshAssetLibrary(); }, [masterLibraryTab]);
+  useEffect(() => { if (masterLibraryTab === "assets") void refreshAssetLibrary(); if (masterLibraryTab === "templates") void listSceneTemplates().then(setMasterSceneTemplates); }, [masterLibraryTab]);
   const uploadLibraryAssets = async (files: FileList | null) => {
     if (!files?.length) return;
     setAudioError("");
@@ -1008,6 +1018,40 @@ function VideoEditorWorkspace({
     if (!file.type.startsWith("image/")) { setAudioError("Choose an image file for the overlay."); return; }
     const assetId = await saveAsset(file);
     updateGlobalOverlay(overlayId, { assetId, fileName: file.name });
+  };
+  const snapDropFrame = (frame: number) => {
+    const grid = Math.round(frame / 5) * 5, points = [0, totalFrames, shownMasterFrame, ...timeline.starts];
+    return Math.round(clamp(points.reduce((best, point) => Math.abs(point - frame) <= 8 && Math.abs(point - frame) < Math.abs(best - frame) ? point : best, grid), 0, totalFrames - 1));
+  };
+  const dropFrame = (event: React.DragEvent<HTMLElement>) => {
+    const lane = event.currentTarget.querySelector<HTMLElement>(".dropTimelineContent") ?? event.currentTarget,
+      rect = lane.getBoundingClientRect();
+    return snapDropFrame(((event.clientX - rect.left) / Math.max(1, rect.width)) * totalFrames);
+  };
+  const dropLibraryAsset = async (event: React.DragEvent<HTMLElement>, trackType: "image" | "video" | "audio", audioTrackId?: string) => {
+    event.preventDefault(); setDragTargetTrack(undefined);
+    const encoded = event.dataTransfer.getData("application/x-renderlaunch-asset");
+    if (!encoded) return;
+    const payload = JSON.parse(encoded) as { assetId: string; kind: string; name: string }, expected = trackType === "audio" ? "audio" : trackType;
+    if (payload.kind !== expected) { setAudioError(`${payload.name} cannot be placed on a ${trackType} track.`); return; }
+    const startFrame = dropFrame(event), asset = libraryAssets.find((item) => item.id === payload.assetId), blob = await loadAssetBlob(payload.assetId);
+    if (!asset || !blob) { setAudioError("That library asset is missing."); return; }
+    if (trackType === "audio" && audioTrackId) {
+      const file = new File([blob], asset.name, { type: asset.type }), details = await inspectAudio(file, videoProject.canvas.fps);
+      addAudioClip(audioTrackId, { id: crypto.randomUUID(), assetId: asset.id, fileName: asset.name, startFrame, sourceStartFrame: 0, durationInFrames: Math.max(1, Math.min(details.durationInFrames, totalFrames - startFrame)), sourceDurationInFrames: details.durationInFrames, volume: 1, muted: false, fadeInFrames: 0, fadeOutFrames: 0, waveform: details.waveform });
+    } else if (trackType !== "audio") {
+      const duration = trackType === "video" ? await inspectMediaDurationFrames(blob, asset.type, videoProject.canvas.fps) : Math.min(150, totalFrames - startFrame);
+      addTimelineAssetClip(trackType, { id: asset.id, name: asset.name }, startFrame, duration);
+    }
+  };
+  const dropSceneTemplate = (event: React.DragEvent<HTMLElement>) => {
+    const encoded = event.dataTransfer.getData("application/x-renderlaunch-template");
+    if (!encoded) return;
+    event.preventDefault(); setDragTargetTrack(undefined);
+    const payload = JSON.parse(encoded) as { templateId?: string; sceneId?: string }, template = payload.templateId ? masterSceneTemplates.find((item) => item.id === payload.templateId)?.composition : scenes.find((scene) => scene.id === payload.sceneId)?.composition;
+    if (!template) return;
+    const frame = dropFrame(event), targetIndex = timeline.starts.findIndex((start) => start >= frame);
+    insertSceneFromTemplate(template, targetIndex < 0 ? scenes.length : targetIndex);
   };
   useEffect(() => {
     const shortcuts = (event: KeyboardEvent) => {
@@ -1210,7 +1254,7 @@ function VideoEditorWorkspace({
             <div className={`assetItems ${assetView}`}>{filteredLibraryAssets.map((asset) => <AssetLibraryItem key={asset.id} asset={asset} folders={assetFolders} referenced={referencedAssetIds.has(asset.id)} onRefresh={refreshAssetLibrary} />)}</div>
             {!filteredLibraryAssets.length && <div className="masterPanelEmpty"><I.Files /><b>No matching assets</b><span>Upload images, videos, audio, or GLB models.</span></div>}
           </div>}
-          {masterLibraryTab === "templates" && <div className="masterTemplateShelf"><div className="masterLibrarySectionHead"><span>Reusable scenes</span><button title="Open template library" onClick={onOpenLibrary}><I.Plus /></button></div>{scenes.map((scene) => <button key={scene.id} onDoubleClick={onOpenScene} onClick={() => onSelectScene(scene.id)}><div className={`templateShelfThumb ${bgClass(scene.composition.background.preset)}`} style={backgroundStyle(scene.composition, 0)}>{scene.thumbnailDataUrl || scene.composition.thumbnailDataUrl ? <img src={scene.thumbnailDataUrl ?? scene.composition.thumbnailDataUrl} alt="" /> : <I.LayoutTemplate />}</div><b>{scene.name}</b><small>Drag-ready clip</small></button>)}</div>}
+          {masterLibraryTab === "templates" && <div className="masterTemplateShelf"><div className="masterLibrarySectionHead"><span>Reusable scenes</span><button title="Open template library" onClick={onOpenLibrary}><I.Plus /></button></div>{masterSceneTemplates.map((template) => <button draggable key={template.id} onDragStart={(event) => { event.dataTransfer.effectAllowed = "copy"; event.dataTransfer.setData("application/x-renderlaunch-template", JSON.stringify({ templateId: template.id })); }}><div className={`templateShelfThumb ${bgClass(template.composition.background.preset)}`} style={backgroundStyle(template.composition, 0)}>{template.thumbnailDataUrl ? <img src={template.thumbnailDataUrl} alt="" /> : <I.LayoutTemplate />}</div><b>{template.name}</b><small>Drag to Scenes track</small></button>)}{scenes.map((scene) => <button draggable key={scene.id} onDragStart={(event) => { event.dataTransfer.effectAllowed = "copy"; event.dataTransfer.setData("application/x-renderlaunch-template", JSON.stringify({ sceneId: scene.id })); }} onDoubleClick={onOpenScene} onClick={() => onSelectScene(scene.id)}><div className={`templateShelfThumb ${bgClass(scene.composition.background.preset)}`} style={backgroundStyle(scene.composition, 0)}>{scene.thumbnailDataUrl || scene.composition.thumbnailDataUrl ? <img src={scene.thumbnailDataUrl ?? scene.composition.thumbnailDataUrl} alt="" /> : <I.LayoutTemplate />}</div><b>{scene.name}</b><small>Current composition</small></button>)}</div>}
           <div className="masterPanelResize horizontal right" onPointerDown={(event) => resizeMasterPanel(event, "left")} />
         </aside>
         <section className="masterPreviewPanel">
@@ -1336,9 +1380,9 @@ function VideoEditorWorkspace({
             </span>
           </div>
         </div>
-        <div className="masterTimelineViewport">
+        <div className={`masterTimelineViewport timelineDropZone ${dragTargetTrack === "master-scenes" ? "compatibleDrop" : ""}`} onDragOver={(event) => { if (event.dataTransfer.types.includes("application/x-renderlaunch-template")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; setDragTargetTrack("master-scenes"); } }} onDragLeave={() => setDragTargetTrack(undefined)} onDrop={dropSceneTemplate}>
           <div
-            className="masterTimeline"
+            className="masterTimeline dropTimelineContent"
             style={{ width: `${masterZoom * 100}%` }}
             onPointerDown={(event) => {
               if ((event.target as HTMLElement).closest(".masterSceneClip"))
@@ -1433,9 +1477,11 @@ function VideoEditorWorkspace({
             })}
           </div>
         </div>
+        <MasterAssetTimelineRow track={videoTimelineTrack} totalFrames={totalFrames} zoom={masterZoom} playhead={shownMasterFrame} dragActive={dragTargetTrack === videoTimelineTrack.id} onDragEnter={() => setDragTargetTrack(videoTimelineTrack.id)} onDragLeave={() => setDragTargetTrack(undefined)} onDrop={(event) => void dropLibraryAsset(event, "video")} onDelete={deleteTimelineAssetClip} />
+        <MasterAssetTimelineRow track={imageTimelineTrack} totalFrames={totalFrames} zoom={masterZoom} playhead={shownMasterFrame} dragActive={dragTargetTrack === imageTimelineTrack.id} onDragEnter={() => setDragTargetTrack(imageTimelineTrack.id)} onDragLeave={() => setDragTargetTrack(undefined)} onDrop={(event) => void dropLibraryAsset(event, "image")} onDelete={deleteTimelineAssetClip} />
         <div className="audioTimeline">
           {videoProject.audioTracks.map((track) => (
-            <div className="audioTrack" key={track.id}>
+            <div className={`audioTrack timelineDropZone ${dragTargetTrack === `master-audio:${track.id}` ? "compatibleDrop" : ""}`} key={track.id} onDragOver={(event) => { if (event.dataTransfer.types.includes("application/x-renderlaunch-asset")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; setDragTargetTrack(`master-audio:${track.id}`); } }} onDragLeave={() => setDragTargetTrack(undefined)} onDrop={(event) => void dropLibraryAsset(event, "audio", track.id)}>
               <div className="audioTrackControls">
                 <I.Music />
                 <b>{track.name}</b>
@@ -1460,7 +1506,7 @@ function VideoEditorWorkspace({
                 </label>
               </div>
               <div className="audioTrackLane">
-                <div className="audioTrackContent" style={{ width: `${masterZoom * 100}%` }}>
+                <div className="audioTrackContent dropTimelineContent" style={{ width: `${masterZoom * 100}%` }}>
                   {track.clips.map((clip) => (
                     <AudioTimelineClip
                       key={clip.id}
@@ -1533,6 +1579,17 @@ function assetMediaKind(asset: Pick<StoredAsset, "type" | "name">): "image" | "v
   return "other";
 }
 
+function MasterAssetTimelineRow({ track, totalFrames, zoom, playhead, dragActive, onDragEnter, onDragLeave, onDrop, onDelete }: { track: TimelineTrack; totalFrames: number; zoom: number; playhead: number; dragActive: boolean; onDragEnter: () => void; onDragLeave: () => void; onDrop: (event: React.DragEvent<HTMLElement>) => void; onDelete: (clipId: string) => void }) {
+  const Icon = track.type === "video" ? I.Film : I.Image;
+  return <div className={`masterAssetTrack timelineDropZone ${dragActive ? "compatibleDrop" : ""}`} onDragOver={(event) => { if (event.dataTransfer.types.includes("application/x-renderlaunch-asset")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; onDragEnter(); } }} onDragLeave={onDragLeave} onDrop={onDrop}>
+    <div className="masterAssetTrackLabel"><Icon /><b>{track.name}</b><I.Eye /></div>
+    <div className="masterAssetTrackLane"><div className="masterAssetTrackContent dropTimelineContent" style={{ width: `${zoom * 100}%` }}>
+      {track.clips.map((clip) => <div key={clip.id} className={`masterAssetClip ${clip.type}`} style={{ left: `${(clip.startFrame / totalFrames) * 100}%`, width: `${(clip.durationInFrames / totalFrames) * 100}%` }} title={`${clip.name} · ${clip.durationInFrames} frames`}><Icon /><b>{clip.name}</b>{clip.referenceType === "asset" && <button title="Remove clip" onClick={() => onDelete(clip.id)}><I.X /></button>}</div>)}
+      <div className="masterPlayhead" style={{ left: `${(playhead / Math.max(1, totalFrames)) * 100}%` }} />
+    </div></div>
+  </div>;
+}
+
 function AssetLibraryItem({ asset, folders, referenced, onRefresh }: { asset: StoredAsset; folders: AssetFolder[]; referenced: boolean; onRefresh: () => Promise<void> }) {
   const source = useAssetUrl(asset.id), kind = assetMediaKind(asset), Icon = kind === "image" ? I.Image : kind === "video" ? I.Film : kind === "audio" ? I.AudioLines : I.Box;
   return <div className="assetLibraryItem" draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "copy"; event.dataTransfer.setData("application/x-renderlaunch-asset", JSON.stringify({ assetId: asset.id, kind, name: asset.name })); event.dataTransfer.setData("text/plain", asset.id); }}>
@@ -1600,6 +1657,15 @@ async function inspectAudio(file: File, fps: number) {
   } finally {
     void context.close();
   }
+}
+
+async function inspectMediaDurationFrames(blob: Blob, type: string, fps: number) {
+  const url = URL.createObjectURL(blob), media = document.createElement(type.startsWith("audio/") ? "audio" : "video");
+  try {
+    media.preload = "metadata";
+    const duration = await new Promise<number>((resolve, reject) => { media.onloadedmetadata = () => resolve(media.duration); media.onerror = () => reject(new Error("The media duration could not be read.")); media.src = url; });
+    return Math.max(1, Math.ceil(duration * fps));
+  } finally { media.removeAttribute("src"); media.load(); URL.revokeObjectURL(url); }
 }
 
 function AudioTimelineClip({ clip, totalFrames, selected, onSelect, onChange }: {
