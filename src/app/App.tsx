@@ -2513,13 +2513,21 @@ function ExportDialog({
           )}
         </div>
       </section>
-      <div className="renderStage" aria-hidden="true">
+      <div
+        className="renderStage"
+        aria-hidden="true"
+        style={{ width: exportWidth, height: exportHeight }}
+      >
         <div
           ref={stage}
           data-scene-ready={sceneReady}
           data-media-frame={mediaReadyFrame}
           className={`renderComposition ${bgClass(project.background.preset)}`}
-          style={backgroundStyle(project, renderFrame)}
+          style={{
+            ...backgroundStyle(project, renderFrame),
+            width: exportWidth,
+            height: exportHeight,
+          }}
         >
           {project.model?.assetId && (
             <div
@@ -2580,13 +2588,15 @@ async function renderProjectMp4(
         }),
     ),
   );
-  const { toCanvas } = await import("html-to-image"),
+  const { getFontEmbedCSS, toCanvas } = await import("html-to-image"),
     { ArrayBufferTarget, Muxer } = await import("mp4-muxer"),
+    fontEmbedCSS = await getFontEmbedCSS(stage),
     config: VideoEncoderConfig = {
       codec: "avc1.42002a",
       width: settings.width,
       height: settings.height,
-      bitrate: settings.width >= 1920 ? 16_000_000 : 8_000_000,
+      bitrate: settings.width >= 1920 ? 28_000_000 : 10_000_000,
+      bitrateMode: "variable",
       framerate: settings.fps,
       avc: { format: "avc" },
     },
@@ -2620,14 +2630,19 @@ async function renderProjectMp4(
     if (project.screen?.mediaType === "video")
       await waitForMediaFrame(stage, sourceFrame, isCancelled);
     const canvas = await toCanvas(stage, {
-      width: 1280,
-      height: 720,
+      width: settings.width,
+      height: settings.height,
       canvasWidth: settings.width,
       canvasHeight: settings.height,
       pixelRatio: 1,
-      skipFonts: true,
+      skipFonts: false,
+      fontEmbedCSS,
       cacheBust: false,
     });
+    if (canvas.width !== settings.width || canvas.height !== settings.height)
+      throw new Error(
+        `The export frame rendered at ${canvas.width} × ${canvas.height} instead of ${settings.width} × ${settings.height}.`,
+      );
     if (outputFrame === 0 && isCapturedFrameBlank(canvas))
       throw new Error(
         "The first rendered frame is blank. The export was stopped before encoding; retry after the scene is fully visible.",
