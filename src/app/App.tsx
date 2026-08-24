@@ -1363,7 +1363,8 @@ function ExportDialog({
       "idle",
     ),
     [error, setError] = useState(""),
-    [downloadUrl, setDownloadUrl] = useState("");
+    [downloadUrl, setDownloadUrl] = useState(""),
+    [sceneReady, setSceneReady] = useState(!project.model?.assetId);
   useEffect(
     () => () => {
       cancelled.current = true;
@@ -1460,13 +1461,23 @@ function ExportDialog({
           </div>
         )}
         {status === "done" && (
-          <div className="renderDone">
-            <I.CircleCheck />
-            <div>
-              <b>Your preview is ready</b>
-              <span>{fileName}</span>
+          <>
+            <div className="renderDone">
+              <I.CircleCheck />
+              <div>
+                <b>Your preview is ready</b>
+                <span>{fileName}</span>
+              </div>
             </div>
-          </div>
+            {downloadUrl && (
+              <video
+                className="exportVideoPreview"
+                src={downloadUrl}
+                controls
+                playsInline
+              />
+            )}
+          </>
         )}
         <div className="exportActions">
           {status === "rendering" ? (
@@ -1492,8 +1503,10 @@ function ExportDialog({
           )}
         </div>
       </section>
-      <div className="renderStage" ref={stage} aria-hidden="true">
+      <div className="renderStage" aria-hidden="true">
         <div
+          ref={stage}
+          data-scene-ready={sceneReady}
           className={`renderComposition ${bgClass(project.background.preset)}`}
           style={backgroundStyle(project)}
         >
@@ -1511,6 +1524,7 @@ function ExportDialog({
                 frame={renderFrame}
                 autoFrame={false}
                 cameraControls={false}
+                onReady={() => setSceneReady(true)}
               />
             </div>
           )}
@@ -1534,6 +1548,21 @@ async function renderProjectMp4(
   await validateExportAssets(project);
   if (project.model?.assetId) await waitForRenderCanvas(stage);
   await document.fonts.ready;
+  await Promise.all(
+    [...stage.querySelectorAll("img")].map(
+      (image) =>
+        image.complete ||
+        new Promise<void>((resolve, reject) => {
+          image.addEventListener("load", () => resolve(), { once: true });
+          image.addEventListener(
+            "error",
+            () =>
+              reject(new Error(`Image ${image.alt || "asset"} did not load.`)),
+            { once: true },
+          );
+        }),
+    ),
+  );
   const { toCanvas } = await import("html-to-image"),
     { ArrayBufferTarget, Muxer } = await import("mp4-muxer"),
     config: VideoEncoderConfig = {
@@ -1577,6 +1606,10 @@ async function renderProjectMp4(
       skipFonts: true,
       cacheBust: false,
     });
+    if (frame === 0 && isCapturedFrameBlank(canvas))
+      throw new Error(
+        "The first rendered frame is blank. The export was stopped before encoding; retry after the scene is fully visible.",
+      );
     const videoFrame = new VideoFrame(canvas, {
       timestamp: Math.round((frame / project.canvas.fps) * 1_000_000),
       duration: Math.round(1_000_000 / project.canvas.fps),
@@ -1616,7 +1649,10 @@ async function validateExportAssets(project: TemplateProject) {
 
 async function waitForRenderCanvas(stage: HTMLDivElement) {
   const deadline = performance.now() + 15_000;
-  while (!stage.querySelector(".threeCanvas canvas")) {
+  while (
+    !stage.querySelector(".threeCanvas canvas") ||
+    stage.dataset.sceneReady !== "true"
+  ) {
     if (performance.now() > deadline)
       throw new Error(
         "The 3D scene did not become ready. Check the model, then retry the export.",
@@ -1624,6 +1660,23 @@ async function waitForRenderCanvas(stage: HTMLDivElement) {
     await new Promise((resolve) => window.setTimeout(resolve, 100));
   }
   await nextPaint();
+}
+
+function isCapturedFrameBlank(canvas: HTMLCanvasElement) {
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return true;
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  let opaque = 0,
+    visible = 0;
+  for (let index = 0; index < pixels.length; index += 64) {
+    const red = pixels[index],
+      green = pixels[index + 1],
+      blue = pixels[index + 2],
+      alpha = pixels[index + 3];
+    if (alpha > 16) opaque += 1;
+    if (alpha > 16 && red + green + blue > 18) visible += 1;
+  }
+  return opaque === 0 || visible < opaque * 0.005;
 }
 
 function nextPaint() {

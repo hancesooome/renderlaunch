@@ -53,6 +53,7 @@ type Props = {
   frameRequest?: number;
   autoFrame?: boolean;
   cameraControls?: boolean;
+  onReady?: () => void;
   onTransform?: (value: TransformValue) => void;
   onCamera?: (
     position: [number, number, number],
@@ -69,6 +70,7 @@ export function SceneCanvas({
   frameRequest = 0,
   autoFrame = false,
   cameraControls = true,
+  onReady,
   onTransform,
   onCamera,
 }: Props) {
@@ -127,6 +129,7 @@ export function SceneCanvas({
             mode={mode}
             onTransform={onTransform}
             onBounds={setBounds}
+            onReady={onReady}
           />
           {lightingVisible && (
             <>
@@ -165,6 +168,7 @@ function LoadedModel({
   mode,
   onTransform,
   onBounds,
+  onReady,
 }: {
   url: string;
   screenUrl?: string;
@@ -174,6 +178,7 @@ function LoadedModel({
   mode: TransformMode;
   onTransform?: Props["onTransform"];
   onBounds: (bounds: NormalizedBounds) => void;
+  onReady?: Props["onReady"];
 }) {
   const gltf = useGLTF(url),
     scene = useMemo(() => {
@@ -224,11 +229,10 @@ function LoadedModel({
       height: size.y * scale,
     };
   }, [scene]);
-  useEffect(
-    () =>
-      onBounds({ radius: normalization.radius, height: normalization.height }),
-    [normalization, onBounds],
-  );
+  useEffect(() => {
+    onBounds({ radius: normalization.radius, height: normalization.height });
+    onReady?.();
+  }, [normalization, onBounds, onReady]);
   useEffect(() => {
     const screen = project.screen;
     if (!screen || screen.mode !== "material" || !mappedTexture) return;
