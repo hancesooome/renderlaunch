@@ -80,7 +80,43 @@ export function App() {
   const [frameRequest, setFrameRequest] = useState(0),
     [testingTemplate, setTestingTemplate] = useState(false),
     [exporting, setExporting] = useState(false),
-    [themeMenuOpen, setThemeMenuOpen] = useState(false);
+    [themeMenuOpen, setThemeMenuOpen] = useState(false),
+    [timelineHeight, setTimelineHeight] = useState(() => {
+      const stored = Number(
+        localStorage.getItem("renderlaunch-timeline-height"),
+      );
+      return Number.isFinite(stored) && stored >= 180 ? stored : 266;
+    });
+  const resizeTimeline = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const handle = event.currentTarget,
+      startY = event.clientY,
+      startHeight = timelineHeight,
+      pointerId = event.pointerId;
+    handle.setPointerCapture(pointerId);
+    document.body.classList.add("resizingTimeline");
+    const move = (pointerEvent: globalThis.PointerEvent) =>
+      setTimelineHeight(
+        clamp(
+          startHeight + startY - pointerEvent.clientY,
+          180,
+          Math.max(180, window.innerHeight - 348),
+        ),
+      );
+    const end = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+      document.body.classList.remove("resizingTimeline");
+      setTimelineHeight((height) => {
+        localStorage.setItem("renderlaunch-timeline-height", String(height));
+        return height;
+      });
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  };
   const replaceModel = async (file?: File) => {
     if (!file) return;
     setUploading(true);
@@ -143,7 +179,11 @@ export function App() {
       />
     );
   return (
-    <main>
+    <main
+      style={
+        { "--timeline-height": `${timelineHeight}px` } as React.CSSProperties
+      }
+    >
       <header>
         <button className="icon" aria-label="Back">
           <I.ChevronLeft />
@@ -181,7 +221,13 @@ export function App() {
           16:9 <I.ChevronDown />
         </button>
         <div className="actions">
-          <button onClick={() => setPreview(true)}>
+          <button
+            onClick={() => {
+              setFrame(0);
+              setPlaying(true);
+              setPreview(true);
+            }}
+          >
             <I.Play /> Preview
           </button>
           <button onClick={() => setTestingTemplate(true)}>
@@ -485,6 +531,7 @@ export function App() {
         onPlay={setPlaying}
         onSelect={setSelected}
         onAutoKey={setAutoKey}
+        onResizeStart={resizeTimeline}
       />
       {exporting && (
         <ExportDialog project={project} onClose={() => setExporting(false)} />
@@ -1150,6 +1197,7 @@ function Timeline({
   onPlay,
   onSelect,
   onAutoKey,
+  onResizeStart,
 }: {
   project: TemplateProject;
   frame: number;
@@ -1161,6 +1209,7 @@ function Timeline({
   onPlay: (playing: boolean) => void;
   onSelect: (id: string) => void;
   onAutoKey: (enabled: boolean) => void;
+  onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
 }) {
   type KeyframeSelection = { trackId: string; keyframeId: string };
   const duration = project.canvas.durationInFrames,
@@ -1355,6 +1404,13 @@ function Timeline({
   };
   return (
     <footer>
+      <div
+        className="timelineResizeHandle"
+        title="Drag to resize the timeline"
+        onPointerDown={onResizeStart}
+      >
+        <i />
+      </div>
       <div className="timeHead">
         <button onClick={() => onPlay(!playing)}>
           {playing ? <I.Pause /> : <I.Play />}

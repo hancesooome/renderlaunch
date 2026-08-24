@@ -36,7 +36,7 @@ svg {
 main {
   height: 100vh;
   display: grid;
-  grid-template-rows: 68px minmax(400px, 1fr) 266px;
+  grid-template-rows: 68px minmax(260px, 1fr) var(--timeline-height, 266px);
   background: #fff;
 }
 header {
@@ -676,6 +676,54 @@ footer {
   border-top: 1px solid #dedee3;
   background: #fff;
   overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.timelineResizeHandle {
+  position: absolute;
+  z-index: 12;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 9px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.timelineResizeHandle::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: transparent;
+  transition: background 0.15s;
+}
+.timelineResizeHandle i {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  width: 42px;
+  height: 3px;
+  border-radius: 2px;
+  transform: translateX(-50%);
+  background: var(--ui-border);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.timelineResizeHandle:hover::before,
+.resizingTimeline .timelineResizeHandle::before {
+  background: var(--ui-accent);
+}
+.timelineResizeHandle:hover i,
+.resizingTimeline .timelineResizeHandle i {
+  opacity: 1;
+}
+.resizingTimeline,
+.resizingTimeline * {
+  cursor: ns-resize !important;
+  user-select: none !important;
 }
 .timeHead {
   height: 66px;
@@ -1298,6 +1346,11 @@ footer {
   overflow-y: auto;
   scrollbar-gutter: stable;
   overscroll-behavior: contain;
+}
+footer > .tracks {
+  height: auto;
+  min-height: 0;
+  flex: 1;
 }
 .previewOverlays .overlayItem {
   pointer-events: none;
