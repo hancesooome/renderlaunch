@@ -32,6 +32,8 @@ import type {
   VideoProject,
   VideoScene,
   SceneTransitionType,
+  AudioClip,
+  AudioTrack,
 } from "../project/schema";
 import {
   resolveMasterFrame,
@@ -830,11 +832,18 @@ function VideoEditorWorkspace({
 }) {
   const [masterZoom, setMasterZoom] = useState(1),
     [draggedSceneId, setDraggedSceneId] = useState<string>(),
+    [selectedAudio, setSelectedAudio] = useState<{ trackId: string; clipId: string }>(),
+    [audioError, setAudioError] = useState(""),
     [trimPreview, setTrimPreview] = useState<{
       id: string;
       sourceStartFrame: number;
       durationInFrames: number;
     }>();
+  const addAudioClip = useEditorStore((state) => state.addAudioClip),
+    updateAudioClip = useEditorStore((state) => state.updateAudioClip),
+    deleteAudioClip = useEditorStore((state) => state.deleteAudioClip),
+    setAudioTrackMuted = useEditorStore((state) => state.setAudioTrackMuted),
+    setAudioTrackVolume = useEditorStore((state) => state.setAudioTrackVolume);
   const normalizedVideoProject = {
       ...videoProject,
       scenes: videoProject.scenes.map((scene) => ({
@@ -871,6 +880,38 @@ function VideoEditorWorkspace({
       : expectedMasterFrame,
     playback = resolveMasterFrame(normalizedVideoProject, shownMasterFrame),
     nextScene = scenes[activeIndex + 1];
+  const selectedClip = selectedAudio
+    ? videoProject.audioTracks
+        .find((track) => track.id === selectedAudio.trackId)
+        ?.clips.find((clip) => clip.id === selectedAudio.clipId)
+    : undefined;
+  const uploadAudio = async (trackId: string, file?: File) => {
+    if (!file) return;
+    setAudioError("");
+    try {
+      if (!file.type.startsWith("audio/")) throw new Error("Choose an audio file.");
+      const details = await inspectAudio(file, videoProject.canvas.fps),
+        assetId = await saveAsset(file),
+        clip: AudioClip = {
+          id: crypto.randomUUID(),
+          assetId,
+          fileName: file.name,
+          startFrame: Math.round(clamp(shownMasterFrame, 0, totalFrames - 1)),
+          sourceStartFrame: 0,
+          durationInFrames: Math.max(1, Math.min(details.durationInFrames, totalFrames - Math.round(shownMasterFrame))),
+          sourceDurationInFrames: details.durationInFrames,
+          volume: 1,
+          muted: false,
+          fadeInFrames: 0,
+          fadeOutFrames: 0,
+          waveform: details.waveform,
+        };
+      addAudioClip(trackId, clip);
+      setSelectedAudio({ trackId, clipId: clip.id });
+    } catch (error) {
+      setAudioError(error instanceof Error ? error.message : "The audio could not be loaded.");
+    }
+  };
   useEffect(() => {
     const shortcuts = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -1138,6 +1179,12 @@ function VideoEditorWorkspace({
         </section>
       </section>
       <section className="masterTimelinePanel">
+        <MasterAudioEngine
+          tracks={videoProject.audioTracks}
+          frame={shownMasterFrame}
+          fps={videoProject.canvas.fps}
+          playing={playing}
+        />
         <div className="masterTimelineHead">
           <div>
             <b>Master Timeline</b>
@@ -1280,9 +1327,162 @@ function VideoEditorWorkspace({
             })}
           </div>
         </div>
+        <div className="audioTimeline">
+          {videoProject.audioTracks.map((track) => (
+            <div className="audioTrack" key={track.id}>
+              <div className="audioTrackControls">
+                <I.Music />
+                <b>{track.name}</b>
+                <button
+                  title={track.muted ? "Unmute track" : "Mute track"}
+                  onClick={() => setAudioTrackMuted(track.id, !track.muted)}
+                >
+                  {track.muted ? <I.VolumeX /> : <I.Volume2 />}
+                </button>
+                <input
+                  aria-label={`${track.name} volume`}
+                  type="range"
+                  min="0"
+                  max="2"
+                  step=".05"
+                  value={track.volume}
+                  onChange={(event) => setAudioTrackVolume(track.id, Number(event.target.value))}
+                />
+                <label className="audioUpload" title={`Add ${track.name}`}>
+                  <I.Plus />
+                  <input type="file" accept="audio/*" onChange={(event) => void uploadAudio(track.id, event.target.files?.[0])} />
+                </label>
+              </div>
+              <div className="audioTrackLane">
+                <div className="audioTrackContent" style={{ width: `${masterZoom * 100}%` }}>
+                  {track.clips.map((clip) => (
+                    <AudioTimelineClip
+                      key={clip.id}
+                      clip={clip}
+                      totalFrames={totalFrames}
+                      selected={selectedAudio?.clipId === clip.id}
+                      onSelect={() => setSelectedAudio({ trackId: track.id, clipId: clip.id })}
+                      onChange={(patch) => updateAudioClip(track.id, clip.id, patch)}
+                    />
+                  ))}
+                  <div className="masterPlayhead" style={{ left: `${(shownMasterFrame / Math.max(1, totalFrames)) * 100}%` }} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        {selectedClip && selectedAudio && (
+          <div className="audioInspector">
+            <b>{selectedClip.fileName}</b>
+            <label>Clip volume <input type="range" min="0" max="2" step=".05" value={selectedClip.volume} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { volume: Number(event.target.value) })} /></label>
+            <label>Fade in <input type="number" min="0" max={selectedClip.durationInFrames} value={selectedClip.fadeInFrames} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { fadeInFrames: Math.max(0, Number(event.target.value)) })} /></label>
+            <label>Fade out <input type="number" min="0" max={selectedClip.durationInFrames} value={selectedClip.fadeOutFrames} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { fadeOutFrames: Math.max(0, Number(event.target.value)) })} /></label>
+            <button onClick={() => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { muted: !selectedClip.muted })}>{selectedClip.muted ? <I.Volume2 /> : <I.VolumeX />} {selectedClip.muted ? "Unmute" : "Mute"}</button>
+            <button className="danger" onClick={() => { deleteAudioClip(selectedAudio.trackId, selectedAudio.clipId); setSelectedAudio(undefined); }}><I.Trash2 /> Delete</button>
+          </div>
+        )}
+        {audioError && <small className="audioError">{audioError}</small>}
       </section>
     </main>
   );
+}
+
+async function inspectAudio(file: File, fps: number) {
+  const context = new AudioContext();
+  try {
+    const buffer = await context.decodeAudioData(await file.arrayBuffer()),
+      samples = buffer.getChannelData(0),
+      bucketCount = 120,
+      bucketSize = Math.max(1, Math.floor(samples.length / bucketCount)),
+      waveform = Array.from({ length: bucketCount }, (_, index) => {
+        let peak = 0;
+        const end = Math.min(samples.length, (index + 1) * bucketSize);
+        for (let sample = index * bucketSize; sample < end; sample += 1)
+          peak = Math.max(peak, Math.abs(samples[sample]));
+        return Math.min(1, peak);
+      });
+    return { durationInFrames: Math.max(1, Math.ceil(buffer.duration * fps)), waveform };
+  } finally {
+    void context.close();
+  }
+}
+
+function AudioTimelineClip({ clip, totalFrames, selected, onSelect, onChange }: {
+  clip: AudioClip;
+  totalFrames: number;
+  selected: boolean;
+  onSelect: () => void;
+  onChange: (patch: Partial<AudioClip>) => void;
+}) {
+  const beginDrag = (event: React.PointerEvent<HTMLDivElement>, edge?: "left" | "right") => {
+    event.preventDefault();
+    event.stopPropagation();
+    onSelect();
+    const target = event.currentTarget,
+      lane = target.closest<HTMLElement>(".audioTrackContent")!,
+      startX = event.clientX,
+      original = { start: clip.startFrame, source: clip.sourceStartFrame, duration: clip.durationInFrames };
+    target.setPointerCapture(event.pointerId);
+    let patch: Partial<AudioClip> = {};
+    const move = (pointerEvent: globalThis.PointerEvent) => {
+      const delta = Math.round(((pointerEvent.clientX - startX) / Math.max(1, lane.getBoundingClientRect().width)) * totalFrames);
+      if (edge === "left") {
+        const applied = Math.round(clamp(delta, -original.source, original.duration - 1));
+        patch = { startFrame: Math.max(0, original.start + applied), sourceStartFrame: original.source + applied, durationInFrames: original.duration - applied };
+      } else if (edge === "right") {
+        patch = { durationInFrames: Math.round(clamp(original.duration + delta, 1, clip.sourceDurationInFrames - original.source)) };
+      } else {
+        patch = { startFrame: Math.round(clamp(original.start + delta, 0, Math.max(0, totalFrames - original.duration))) };
+      }
+      Object.assign(target.style, {
+        left: `${(((patch.startFrame ?? original.start) / totalFrames) * 100)}%`,
+        width: `${(((patch.durationInFrames ?? original.duration) / totalFrames) * 100)}%`,
+      });
+    };
+    const end = () => {
+      target.removeEventListener("pointermove", move);
+      target.removeEventListener("pointerup", end);
+      target.removeEventListener("pointercancel", end);
+      if (Object.keys(patch).length) onChange(patch);
+    };
+    target.addEventListener("pointermove", move);
+    target.addEventListener("pointerup", end);
+    target.addEventListener("pointercancel", end);
+  };
+  return (
+    <div className={`audioClip ${selected ? "selected" : ""}`} style={{ left: `${(clip.startFrame / totalFrames) * 100}%`, width: `${(clip.durationInFrames / totalFrames) * 100}%` }} onPointerDown={(event) => beginDrag(event)}>
+      <button className="audioTrim left" onPointerDown={(event) => beginDrag(event as unknown as React.PointerEvent<HTMLDivElement>, "left")} />
+      <span>{clip.waveform.map((peak, index) => <i key={index} style={{ height: `${Math.max(8, peak * 100)}%` }} />)}</span>
+      <b>{clip.fileName}</b>
+      <button className="audioTrim right" onPointerDown={(event) => beginDrag(event as unknown as React.PointerEvent<HTMLDivElement>, "right")} />
+    </div>
+  );
+}
+
+function MasterAudioEngine({ tracks, frame, fps, playing }: { tracks: AudioTrack[]; frame: number; fps: number; playing: boolean }) {
+  return <div hidden>{tracks.flatMap((track) => track.clips.map((clip) => <AudioClipPlayer key={`${track.id}-${clip.id}`} track={track} clip={clip} frame={frame} fps={fps} playing={playing} />))}</div>;
+}
+
+function AudioClipPlayer({ track, clip, frame, fps, playing }: { track: AudioTrack; clip: AudioClip; frame: number; fps: number; playing: boolean }) {
+  const asset = useAssetUrl(clip.assetId), ref = useRef<HTMLAudioElement>(null), localFrame = frame - clip.startFrame;
+  useEffect(() => {
+    const audio = ref.current;
+    if (!audio) return;
+    const active = localFrame >= 0 && localFrame < clip.durationInFrames,
+      desiredTime = (clip.sourceStartFrame + Math.max(0, localFrame)) / fps,
+      fadeIn = clip.fadeInFrames ? clamp(localFrame / clip.fadeInFrames, 0, 1) : 1,
+      fadeOut = clip.fadeOutFrames ? clamp((clip.durationInFrames - localFrame) / clip.fadeOutFrames, 0, 1) : 1;
+    audio.volume = clamp(track.volume * clip.volume * fadeIn * fadeOut, 0, 1);
+    audio.muted = track.muted || clip.muted;
+    if (!active || !playing) {
+      audio.pause();
+      if (active && Math.abs(audio.currentTime - desiredTime) > 0.08) audio.currentTime = desiredTime;
+    } else {
+      if (Math.abs(audio.currentTime - desiredTime) > 0.2) audio.currentTime = desiredTime;
+      void audio.play().catch(() => undefined);
+    }
+  }, [clip, fps, frame, localFrame, playing, track.muted, track.volume]);
+  return asset.url ? <audio ref={ref} src={asset.url} preload="auto" /> : null;
 }
 
 function ScenePreviewLayer({

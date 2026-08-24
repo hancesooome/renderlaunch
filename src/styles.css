@@ -33,7 +33,7 @@ button {
 .videoEditorWorkspace {
   height: 100vh;
   display: grid;
-  grid-template-rows: 64px minmax(0, 1fr) 210px;
+  grid-template-rows: 64px minmax(0, 1fr) minmax(330px, 40vh);
   background: var(--ui-bg);
   color: var(--ui-text);
 }
@@ -306,7 +306,84 @@ button {
   padding: 12px 18px 18px;
   border-top: 1px solid var(--ui-border);
   background: var(--ui-surface);
+  overflow-y: auto;
 }
+
+.audioTimeline {
+  margin-top: 8px;
+  display: grid;
+  gap: 3px;
+}
+.audioTrack {
+  height: 46px;
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  border: 1px solid var(--ui-border);
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--ui-bg);
+}
+.audioTrackControls {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 16px minmax(58px, 1fr) 24px 48px 25px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border-right: 1px solid var(--ui-border);
+  background: var(--ui-panel);
+}
+.audioTrackControls > svg { width: 14px; color: var(--ui-accent); }
+.audioTrackControls b { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.audioTrackControls button,
+.audioUpload { height: 25px; display: grid; place-items: center; border-radius: 5px; }
+.audioTrackControls button:hover,
+.audioUpload:hover { background: var(--ui-accent-soft); color: var(--ui-accent); }
+.audioTrackControls button svg,
+.audioUpload svg { width: 13px; }
+.audioTrackControls input[type="range"] { width: 48px; accent-color: var(--ui-accent); }
+.audioUpload input { display: none; }
+.audioTrackLane { min-width: 0; overflow-x: auto; overflow-y: hidden; }
+.audioTrackContent { position: relative; min-width: 100%; height: 100%; }
+.audioClip {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  min-width: 22px;
+  overflow: hidden;
+  border: 1px solid #37b782;
+  border-radius: 5px;
+  background: color-mix(in srgb, #20b77a 28%, var(--ui-panel));
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.audioClip.selected { outline: 2px solid #57dba7; outline-offset: 1px; }
+.audioClip > span { position: absolute; inset: 5px 7px; display: flex; align-items: center; gap: 1px; opacity: .55; }
+.audioClip > span i { min-width: 1px; flex: 1; max-width: 3px; border-radius: 2px; background: #72e7ba; }
+.audioClip > b { position: relative; z-index: 2; display: block; padding: 3px 10px; overflow: hidden; color: var(--ui-text); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px var(--ui-bg); }
+.audioTrim { position: absolute; z-index: 4; top: 0; bottom: 0; width: 8px; padding: 0; cursor: ew-resize; touch-action: none; }
+.audioTrim.left { left: 0; }
+.audioTrim.right { right: 0; }
+.audioInspector {
+  min-height: 38px;
+  margin-top: 7px;
+  padding: 5px 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: 7px;
+  background: var(--ui-panel);
+}
+.audioInspector > b { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audioInspector label { display: flex; align-items: center; gap: 5px; color: var(--ui-muted); font-size: 10px; }
+.audioInspector input[type="range"] { width: 70px; accent-color: var(--ui-accent); }
+.audioInspector input[type="number"] { width: 52px; height: 25px; border: 1px solid var(--ui-border); border-radius: 5px; background: var(--ui-surface); }
+.audioInspector button { height: 27px; padding: 0 8px; display: flex; align-items: center; gap: 4px; border: 1px solid var(--ui-border); border-radius: 6px; }
+.audioInspector button svg { width: 13px; }
+.audioInspector button.danger,
+.audioError { color: var(--ui-danger, #ef4444); }
 .masterTimelineHead {
   height: 36px;
 }

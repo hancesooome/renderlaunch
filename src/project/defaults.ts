@@ -201,6 +201,32 @@ export function createDefaultVideoProject(): VideoProject {
       },
     ],
     activeSceneId: sceneId,
+    audioTracks: [
+      {
+        id: "music",
+        name: "Music",
+        type: "music",
+        muted: false,
+        volume: 1,
+        clips: [],
+      },
+      {
+        id: "voiceover",
+        name: "Voice-over",
+        type: "voiceover",
+        muted: false,
+        volume: 1,
+        clips: [],
+      },
+      {
+        id: "sfx",
+        name: "Sound Effects",
+        type: "sfx",
+        muted: false,
+        volume: 1,
+        clips: [],
+      },
+    ],
     createdAt: composition.createdAt,
     updatedAt: composition.updatedAt,
   };

@@ -9,7 +9,9 @@ import type {
   VideoProject,
   VideoScene,
   SceneTransitionType,
+  AudioClip,
 } from "../project/schema";
+import { defaultAudioTracks } from "../project/schema";
 import { loadRecentProject, saveProject } from "../persistence/database";
 import { clamp } from "../animation/frame";
 import {
@@ -70,6 +72,11 @@ type EditorState = {
     type: SceneTransitionType,
     durationInFrames: number,
   ) => void;
+  addAudioClip: (trackId: string, clip: AudioClip) => void;
+  updateAudioClip: (trackId: string, clipId: string, patch: Partial<AudioClip>) => void;
+  deleteAudioClip: (trackId: string, clipId: string) => void;
+  setAudioTrackMuted: (trackId: string, muted: boolean) => void;
+  setAudioTrackVolume: (trackId: string, volume: number) => void;
   undo: () => void;
   redo: () => void;
   persist: () => Promise<void>;
@@ -551,6 +558,52 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         masterFrame: resolved.masterFrame,
         saveStatus: "unsaved",
       };
+    }),
+  addAudioClip: (trackId, clip) =>
+    set((state) => {
+      const now = new Date().toISOString(),
+        videoProject = produce(state.videoProject, (draft) => {
+          if (!draft.audioTracks.length) draft.audioTracks = defaultAudioTracks();
+          draft.audioTracks.find((track) => track.id === trackId)?.clips.push(clip);
+          draft.updatedAt = now;
+        });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
+  updateAudioClip: (trackId, clipId, patch) =>
+    set((state) => {
+      const videoProject = produce(state.videoProject, (draft) => {
+        const clip = draft.audioTracks.find((track) => track.id === trackId)?.clips.find((item) => item.id === clipId);
+        if (clip) Object.assign(clip, patch);
+        draft.updatedAt = new Date().toISOString();
+      });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
+  deleteAudioClip: (trackId, clipId) =>
+    set((state) => {
+      const videoProject = produce(state.videoProject, (draft) => {
+        const track = draft.audioTracks.find((item) => item.id === trackId);
+        if (track) track.clips = track.clips.filter((clip) => clip.id !== clipId);
+        draft.updatedAt = new Date().toISOString();
+      });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
+  setAudioTrackMuted: (trackId, muted) =>
+    set((state) => {
+      const videoProject = produce(state.videoProject, (draft) => {
+        const track = draft.audioTracks.find((item) => item.id === trackId);
+        if (track) track.muted = muted;
+        draft.updatedAt = new Date().toISOString();
+      });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
+  setAudioTrackVolume: (trackId, volume) =>
+    set((state) => {
+      const videoProject = produce(state.videoProject, (draft) => {
+        const track = draft.audioTracks.find((item) => item.id === trackId);
+        if (track) track.volume = clamp(volume, 0, 2);
+        draft.updatedAt = new Date().toISOString();
+      });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
     }),
   undo: () =>
     set((state) => {

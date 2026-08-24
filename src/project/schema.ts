@@ -17,6 +17,7 @@ export const sceneTransitionTypeSchema = z.enum([
   "zoom",
   "blur",
 ]);
+export const audioTrackTypeSchema = z.enum(["music", "voiceover", "sfx"]);
 
 export const keyframeEasingSchema = z.enum([
   "linear",
@@ -334,6 +335,36 @@ export const videoSceneSchema = z.object({
   updatedAt: z.string(),
 });
 
+export const audioClipSchema = z.object({
+  id: z.string().min(1),
+  assetId: z.string().min(1),
+  fileName: z.string().min(1),
+  startFrame: z.number().int().nonnegative(),
+  sourceStartFrame: z.number().int().nonnegative().default(0),
+  durationInFrames: z.number().int().positive(),
+  sourceDurationInFrames: z.number().int().positive(),
+  volume: z.number().min(0).max(2).default(1),
+  muted: z.boolean().default(false),
+  fadeInFrames: z.number().int().nonnegative().default(0),
+  fadeOutFrames: z.number().int().nonnegative().default(0),
+  waveform: z.array(z.number().min(0).max(1)).max(256).default([]),
+});
+
+export const audioTrackSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  type: audioTrackTypeSchema,
+  muted: z.boolean().default(false),
+  volume: z.number().min(0).max(2).default(1),
+  clips: z.array(audioClipSchema).default([]),
+});
+
+export const defaultAudioTracks = () => [
+  { id: "music", name: "Music", type: "music" as const, muted: false, volume: 1, clips: [] },
+  { id: "voiceover", name: "Voice-over", type: "voiceover" as const, muted: false, volume: 1, clips: [] },
+  { id: "sfx", name: "Sound Effects", type: "sfx" as const, muted: false, volume: 1, clips: [] },
+];
+
 export const videoProjectSchema = z.object({
   schemaVersion: z.literal(3),
   id: z.string().min(1),
@@ -344,6 +375,7 @@ export const videoProjectSchema = z.object({
     fps: z.literal(30),
   }),
   scenes: z.array(videoSceneSchema).min(1),
+  audioTracks: z.array(audioTrackSchema).default([]),
   activeSceneId: z.string().min(1),
   thumbnailDataUrl: z.string().optional(),
   createdAt: z.string(),
@@ -384,6 +416,10 @@ export function migrateVideoProjectData(value: unknown): unknown {
             };
           })
         : candidate.scenes,
+      audioTracks:
+        Array.isArray(candidate.audioTracks) && candidate.audioTracks.length
+          ? candidate.audioTracks
+          : defaultAudioTracks(),
     };
   const migratedComposition = migrateProjectData(value) as Record<
     string,
@@ -418,6 +454,11 @@ export function migrateVideoProjectData(value: unknown): unknown {
       },
     ],
     activeSceneId: sceneId,
+    audioTracks: [
+      { id: "music", name: "Music", type: "music", muted: false, volume: 1, clips: [] },
+      { id: "voiceover", name: "Voice-over", type: "voiceover", muted: false, volume: 1, clips: [] },
+      { id: "sfx", name: "Sound Effects", type: "sfx", muted: false, volume: 1, clips: [] },
+    ],
     thumbnailDataUrl: migratedComposition.thumbnailDataUrl,
     createdAt,
     updatedAt,
@@ -428,6 +469,9 @@ export type TemplateProject = z.infer<typeof projectSchema>;
 export type VideoScene = z.infer<typeof videoSceneSchema>;
 export type VideoProject = z.infer<typeof videoProjectSchema>;
 export type SceneTransitionType = z.infer<typeof sceneTransitionTypeSchema>;
+export type AudioTrack = z.infer<typeof audioTrackSchema>;
+export type AudioClip = z.infer<typeof audioClipSchema>;
+export type AudioTrackType = z.infer<typeof audioTrackTypeSchema>;
 export type ProjectLayer = z.infer<typeof layerSchema>;
 export type KeyframeTrack = z.infer<typeof keyframeTrackSchema>;
 export type TextAnimationPreset = z.infer<typeof textAnimationPresetSchema>;
