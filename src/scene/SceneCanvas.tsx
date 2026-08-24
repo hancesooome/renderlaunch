@@ -338,6 +338,20 @@ function Flat3DText({
       "overlay.color",
       frame,
       layer.textStyle.color,
+    ),
+    fontSize = evaluateNumericProperty(
+      project.keyframeTracks,
+      layer.id,
+      "text.fontSize",
+      frame,
+      layer.textStyle.fontSize,
+    ),
+    letterSpacing = evaluateNumericProperty(
+      project.keyframeTracks,
+      layer.id,
+      "text.letterSpacing",
+      frame,
+      layer.textStyle.letterSpacing,
     );
   const commit = () => {
     if (!dragging.current || !group.current) return;
@@ -368,11 +382,11 @@ function Flat3DText({
               minHeight: layer.transform2D.height,
               fontFamily: layer.textStyle.fontFamily,
               fontWeight: layer.textStyle.fontWeight,
-              fontSize: layer.textStyle.fontSize,
+              fontSize,
               color,
               textAlign: layer.textStyle.align,
               lineHeight: layer.textStyle.lineHeight,
-              letterSpacing: layer.textStyle.letterSpacing,
+              letterSpacing,
               opacity,
             }}
           >
@@ -623,7 +637,11 @@ function LoadedModel({
           rotation={frontRotation(model.frontAxis)}
         >
           <group scale={normalization.scale}>
-            <primitive object={scene} position={normalization.offset} />
+            <primitive
+              object={scene}
+              position={normalization.offset}
+              dispose={null}
+            />
           </group>
           {animatedScreen?.mode === "plane" && mappedTexture && (
             <ScreenPlane project={animatedProject} texture={mappedTexture} />

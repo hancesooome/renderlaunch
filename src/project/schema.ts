@@ -31,6 +31,8 @@ export const numericKeyframePropertySchema = z.enum([
   "overlay.height",
   "overlay.rotation",
   "overlay.opacity",
+  "text.fontSize",
+  "text.letterSpacing",
   "overlay3d.position.x",
   "overlay3d.position.y",
   "overlay3d.position.z",

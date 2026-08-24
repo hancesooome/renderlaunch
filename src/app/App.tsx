@@ -205,34 +205,14 @@ export function App() {
       setUploading(false);
     }
   };
-  if (testingTemplate)
-    return (
-      <UserPreview
-        template={project}
-        frame={frame}
-        playing={playing}
-        onFrame={setFrame}
-        onPlay={setPlaying}
-        onClose={() => setTestingTemplate(false)}
-      />
-    );
-  if (preview)
-    return (
-      <Preview
-        project={project}
-        frame={frame}
-        playing={playing}
-        onFrame={setFrame}
-        onPlay={setPlaying}
-        onClose={() => setPreview(false)}
-      />
-    );
   return (
-    <main
-      style={
-        { "--timeline-height": `${timelineHeight}px` } as React.CSSProperties
-      }
-    >
+    <>
+      <main
+        aria-hidden={preview || testingTemplate || undefined}
+        style={
+          { "--timeline-height": `${timelineHeight}px` } as React.CSSProperties
+        }
+      >
       <header>
         <button className="icon" aria-label="Back">
           <I.ChevronLeft />
@@ -642,7 +622,34 @@ export function App() {
       {exporting && (
         <ExportDialog project={project} onClose={() => setExporting(false)} />
       )}
-    </main>
+      </main>
+      {testingTemplate && (
+        <UserPreview
+          template={project}
+          frame={frame}
+          playing={playing}
+          onFrame={setFrame}
+          onPlay={setPlaying}
+          onClose={() => {
+            setPlaying(false);
+            setTestingTemplate(false);
+          }}
+        />
+      )}
+      {preview && (
+        <Preview
+          project={project}
+          frame={frame}
+          playing={playing}
+          onFrame={setFrame}
+          onPlay={setPlaying}
+          onClose={() => {
+            setPlaying(false);
+            setPreview(false);
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -2009,6 +2016,18 @@ function getKeyframeChannels(
         value: layer.transform2D.opacity,
       },
       {
+        label: "Font Size",
+        valueType: "number" as const,
+        property: "text.fontSize" as const,
+        value: layer.textStyle.fontSize,
+      },
+      {
+        label: "Letter Spacing",
+        valueType: "number" as const,
+        property: "text.letterSpacing" as const,
+        value: layer.textStyle.letterSpacing,
+      },
+      {
         label: "Text Color",
         valueType: "color" as const,
         property: "overlay.color" as const,
@@ -2055,6 +2074,18 @@ function getKeyframeChannels(
       },
       ...(layer.type === "text"
         ? [
+            {
+              label: "Font Size",
+              valueType: "number" as const,
+              property: "text.fontSize" as const,
+              value: layer.textStyle.fontSize,
+            },
+            {
+              label: "Letter Spacing",
+              valueType: "number" as const,
+              property: "text.letterSpacing" as const,
+              value: layer.textStyle.letterSpacing,
+            },
             {
               label: "Text Color",
               valueType: "color" as const,
@@ -3519,6 +3550,20 @@ function OverlayItem({
     },
     style = {
       ...layer.textStyle,
+      fontSize: evaluateNumericProperty(
+        project.keyframeTracks,
+        layer.id,
+        "text.fontSize",
+        frame,
+        layer.textStyle.fontSize,
+      ),
+      letterSpacing: evaluateNumericProperty(
+        project.keyframeTracks,
+        layer.id,
+        "text.letterSpacing",
+        frame,
+        layer.textStyle.letterSpacing,
+      ),
       color: evaluateColorProperty(
         project.keyframeTracks,
         layer.id,
