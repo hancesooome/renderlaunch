@@ -172,6 +172,15 @@ button {
 .masterAssetTrackLabel { padding: 0 9px; display: grid; grid-template-columns: 14px minmax(0,1fr) 13px; align-items: center; gap: 7px; border-right: 1px solid #30343c; background: #181b21; font-size: 9px; }.masterAssetTrackLabel > svg { width: 12px; color: #b794f6; }.masterAssetTrackLabel > svg:last-child { color: #777f8b; }
 .masterAssetTrackLane { min-width: 0; overflow-x: auto; overflow-y: hidden; }.masterAssetTrackContent { position: relative; min-width: 100%; height: 100%; }
 .masterAssetClip { position: absolute; z-index: 2; top: 3px; bottom: 3px; min-width: 24px; padding: 0 7px; display: flex; align-items: center; gap: 5px; overflow: hidden; border: 1px solid #ad7ee8; border-radius: 3px; background: #4b3866; color: #f1eaff; font-size: 8px; }.masterAssetClip.video { border-color: #6f8ed8; background: #35496f; }.masterAssetClip > svg { width: 10px; min-width: 10px; }.masterAssetClip b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.masterAssetClip button { position: absolute; right: 2px; width: 18px; height: 18px; display: none; place-items: center; border-radius: 3px; background: #171a20cc; }.masterAssetClip:hover button { display: grid; }.masterAssetClip button svg { width: 9px; }
+.masterAssetClip[data-timeline-clip-id] { cursor: grab; touch-action: none; user-select: none; }
+.masterAssetClip[data-timeline-clip-id]:active { cursor: grabbing; }
+.masterAssetClip.selected { z-index: 4; outline: 2px solid #4aa3ff; outline-offset: 1px; }
+.masterAssetClip .masterAssetTrim { top: 0; bottom: 0; width: 7px; height: auto; display: block; border-radius: 0; background: transparent; cursor: ew-resize; touch-action: none; }
+.masterAssetClip .masterAssetTrim.left { left: 0; right: auto; }
+.masterAssetClip .masterAssetTrim.right { right: 0; }
+.masterAssetClip:hover .masterAssetTrim,.masterAssetClip.selected .masterAssetTrim { display: block; background: #4aa3ff88; }
+.masterAssetClip .masterAssetDelete { right: 8px; }
+.masterTimelineTools button.active { border-color: #168cff; background: #15395f; color: #69b4ff; }
 .timelineDropZone.compatibleDrop { background: color-mix(in srgb, #168cff 13%, #111318); box-shadow: inset 0 0 0 1px #168cff; }.timelineDropZone.compatibleDrop .masterAssetTrackLabel,.timelineDropZone.compatibleDrop .audioTrackControls { background: #173452; }
 
 /* Master video workspace */
