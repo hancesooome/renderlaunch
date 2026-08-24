@@ -833,6 +833,7 @@ function VideoEditorWorkspace({
   onSave: () => void;
 }) {
   const [masterZoom, setMasterZoom] = useState(1),
+    [masterExporting, setMasterExporting] = useState(false),
     [draggedSceneId, setDraggedSceneId] = useState<string>(),
     [selectedAudio, setSelectedAudio] = useState<{ trackId: string; clipId: string }>(),
     [selectedOverlayId, setSelectedOverlayId] = useState<string>(),
@@ -1036,6 +1037,9 @@ function VideoEditorWorkspace({
         <div className="actions">
           <button onClick={onOpenScene}>
             <I.SquarePen /> Open Scene Editor
+          </button>
+          <button onClick={() => { onPlay(false); setMasterExporting(true); }}>
+            <I.Download /> Export Full Video
           </button>
           <button className="primary" onClick={onSave}>
             <I.Save /> Save Video Project
@@ -1435,6 +1439,7 @@ function VideoEditorWorkspace({
         )}
         {audioError && <small className="audioError">{audioError}</small>}
       </section>
+      {masterExporting && <MasterExportDialog videoProject={videoProject} onClose={() => setMasterExporting(false)} />}
     </main>
   );
 }
@@ -1581,10 +1586,12 @@ function ScenePreviewLayer({
   project,
   frame,
   style,
+  onMediaFrameReady,
 }: {
   project: TemplateProject;
   frame: number;
   style?: React.CSSProperties;
+  onMediaFrameReady?: (frame: number) => void;
 }) {
   return (
     <div
@@ -1599,6 +1606,7 @@ function ScenePreviewLayer({
             frame={frame}
             autoFrame={false}
             cameraControls={false}
+            onMediaFrameReady={onMediaFrameReady}
           />
         )
       ) : (
@@ -3469,6 +3477,57 @@ function KeyframePropertyRow({
   );
 }
 
+function MasterExportDialog({ videoProject, onClose }: { videoProject: VideoProject; onClose: () => void }) {
+  const stage = useRef<HTMLDivElement>(null), cancelled = useRef(false), startedAt = useRef(0),
+    [masterRenderFrame, setMasterRenderFrame] = useState(0), [outputFrame, setOutputFrame] = useState(0),
+    [progress, setProgress] = useState(0), [status, setStatus] = useState<"idle" | "rendering" | "done" | "error">("idle"),
+    [error, setError] = useState(""), [downloadUrl, setDownloadUrl] = useState(""), [mediaReadyFrame, setMediaReadyFrame] = useState(-1),
+    [resolution, setResolution] = useState<"720p" | "1080p">("1080p"), [exportFps, setExportFps] = useState<30 | 60>(60);
+  const normalized = { ...videoProject, scenes: videoProject.scenes.map((scene) => ({ ...scene, transitionToNext: scene.transitionToNext ?? { type: "cut" as const, durationInFrames: 15 } })) },
+    timeline = sceneStarts(normalized), totalSourceFrames = timeline.totalFrames,
+    width = resolution === "1080p" ? 1920 : 1280, height = resolution === "1080p" ? 1080 : 720,
+    durationSeconds = totalSourceFrames / videoProject.canvas.fps, totalFrames = Math.round(durationSeconds * exportFps),
+    resolved = resolveMasterFrame(normalized, masterRenderFrame), composition = resolved.scene.composition,
+    localRenderFrame = resolved.scene.sourceStartFrame + resolved.localFrame,
+    eta = progress > 0 ? Math.max(0, ((performance.now() - startedAt.current) / 1000) * (100 - progress) / progress) : 0;
+  useEffect(() => () => { cancelled.current = true; if (downloadUrl) URL.revokeObjectURL(downloadUrl); }, [downloadUrl]);
+  const start = async () => {
+    if (!stage.current) return;
+    cancelled.current = false; startedAt.current = performance.now(); setStatus("rendering"); setError(""); setProgress(0); setDownloadUrl("");
+    try {
+      const blob = await renderVideoProjectMp4(normalized, stage.current, { width, height, fps: exportFps }, (source, output, total) => {
+        setMasterRenderFrame(source); setOutputFrame(output); setProgress((output / total) * 100);
+      }, () => cancelled.current);
+      if (cancelled.current) throw new Error("Export cancelled.");
+      setDownloadUrl(URL.createObjectURL(blob)); setProgress(100); setStatus("done");
+    } catch (reason) {
+      if (cancelled.current) { setStatus("idle"); return; }
+      setError(reason instanceof Error ? reason.message : "The full video could not be rendered."); setStatus("error");
+    }
+  };
+  const fileName = `${videoProject.name.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "renderlaunch-video"}.mp4`;
+  return <div className="exportBackdrop" role="dialog" aria-modal="true">
+    <section className="exportDialog">
+      <div className="exportHead"><div><small>MASTER TIMELINE RENDER</small><h2>Export Full Video</h2></div><button aria-label="Close export" disabled={status === "rendering"} onClick={onClose}><I.X /></button></div>
+      <div className="renderSettings">
+        <label>Resolution<select value={resolution} disabled={status === "rendering"} onChange={(event) => setResolution(event.target.value as "720p" | "1080p")}><option value="1080p">1920 × 1080 (Full HD)</option><option value="720p">1280 × 720 (Draft)</option></select></label>
+        <label>Frame rate<select value={exportFps} disabled={status === "rendering"} onChange={(event) => setExportFps(Number(event.target.value) as 30 | 60)}><option value="60">60 FPS</option><option value="30">30 FPS</option></select></label>
+        <span>Format <b>H.264 + AAC MP4</b></span><span>Duration <b>{durationSeconds.toFixed(1)}s</b></span>
+      </div>
+      {status === "rendering" && <div className="renderProgress"><div><i style={{ width: `${progress}%` }} /></div><span>Rendering frame {Math.min(outputFrame + 1, totalFrames)} of {totalFrames} · about {Math.ceil(eta)}s remaining</span><b>{Math.round(progress)}%</b></div>}
+      {status === "error" && <div className="renderError"><I.CircleAlert /><div><b>Export failed</b><span>{error}</span></div></div>}
+      {status === "done" && <><div className="renderDone"><I.CircleCheck /><div><b>Your full video is ready</b><span>{fileName}</span></div></div>{downloadUrl && <video className="exportVideoPreview" src={downloadUrl} controls playsInline />}</>}
+      <div className="exportActions">{status === "rendering" ? <button onClick={() => { cancelled.current = true; }}>Cancel render</button> : <button onClick={onClose}>Cancel</button>}{status === "done" && downloadUrl ? <a className="primary" href={downloadUrl} download={fileName}><I.Download /> Download MP4</a> : <button className="primary" onClick={() => void start()}><I.Clapperboard /> {status === "error" ? "Try Again" : "Start Rendering"}</button>}</div>
+    </section>
+    <div className="renderStage" aria-hidden="true" style={{ width, height }}>
+      <div ref={stage} data-media-frame={mediaReadyFrame} className={`renderComposition ${bgClass(composition.background.preset)}`} style={{ ...backgroundStyle(composition, localRenderFrame), width, height }}>
+        {resolved.transition ? <TransitionPreview transition={resolved.transition} /> : <ScenePreviewLayer project={composition} frame={localRenderFrame} onMediaFrameReady={setMediaReadyFrame} />}
+        <MasterOverlays overlays={videoProject.globalOverlays} frame={masterRenderFrame} />
+      </div>
+    </div>
+  </div>;
+}
+
 function ExportDialog({
   project,
   onClose,
@@ -3695,6 +3754,115 @@ function ExportDialog({
       </div>
     </div>
   );
+}
+
+async function renderVideoProjectMp4(
+  videoProject: VideoProject,
+  stage: HTMLDivElement,
+  settings: { width: number; height: number; fps: 30 | 60 },
+  onFrame: (sourceFrame: number, outputFrame: number, totalFrames: number) => void,
+  isCancelled: () => boolean,
+) {
+  if (!("VideoEncoder" in window) || !("VideoFrame" in window)) throw new Error("This browser cannot encode H.264 locally. Use the latest Chrome or Edge with hardware acceleration enabled.");
+  await validateVideoProjectAssets(videoProject);
+  if (resolveMasterFrame(videoProject, 0).scene.composition.model?.assetId) await waitForMasterCanvas(stage, isCancelled);
+  await Promise.all([...stage.querySelectorAll("img")].map((image) => image.complete ? Promise.resolve() : new Promise<void>((resolve, reject) => { image.addEventListener("load", () => resolve(), { once: true }); image.addEventListener("error", () => reject(new Error(`Image ${image.alt || "asset"} did not load.`)), { once: true }); })));
+  await document.fonts.ready;
+  const timeline = sceneStarts(videoProject), durationSeconds = timeline.totalFrames / videoProject.canvas.fps,
+    totalFrames = Math.round(durationSeconds * settings.fps), hasAudio = videoProject.audioTracks.some((track) => track.clips.length && !track.muted),
+    mixedAudio = hasAudio ? await mixProjectAudio(videoProject, durationSeconds, isCancelled) : undefined,
+    { getFontEmbedCSS, toCanvas } = await import("html-to-image"), { ArrayBufferTarget, Muxer } = await import("mp4-muxer"),
+    fontEmbedCSS = await getFontEmbedCSS(stage), videoConfig: VideoEncoderConfig = { codec: "avc1.42002a", width: settings.width, height: settings.height, bitrate: settings.width >= 1920 ? 28_000_000 : 10_000_000, bitrateMode: "variable", framerate: settings.fps, avc: { format: "avc" } },
+    support = await VideoEncoder.isConfigSupported(videoConfig);
+  if (!support.supported) throw new Error("H.264 encoding is unavailable on this device. Enable browser hardware acceleration or try Chrome/Edge.");
+  const target = new ArrayBufferTarget(), muxer = new Muxer({ target, video: { codec: "avc", width: settings.width, height: settings.height, frameRate: settings.fps }, ...(mixedAudio ? { audio: { codec: "aac" as const, numberOfChannels: mixedAudio.numberOfChannels, sampleRate: mixedAudio.sampleRate } } : {}), fastStart: "in-memory", firstTimestampBehavior: "offset" });
+  let encoderFailure: Error | undefined;
+  const encoder = new VideoEncoder({ output: (chunk, metadata) => muxer.addVideoChunk(chunk, metadata), error: (reason) => { encoderFailure = reason; } });
+  encoder.configure(videoConfig);
+  let previousSceneId = "";
+  for (let outputFrame = 0; outputFrame < totalFrames; outputFrame += 1) {
+    if (isCancelled()) break;
+    const sourceFrame = (outputFrame / settings.fps) * videoProject.canvas.fps, resolved = resolveMasterFrame(videoProject, sourceFrame);
+    onFrame(sourceFrame, outputFrame, totalFrames);
+    await nextPaint();
+    if (resolved.scene.id !== previousSceneId) { previousSceneId = resolved.scene.id; if (resolved.scene.composition.model?.assetId) await waitForMasterCanvas(stage, isCancelled); }
+    if (!resolved.transition && resolved.scene.composition.screen?.mediaType === "video") await waitForMediaFrame(stage, resolved.scene.sourceStartFrame + resolved.localFrame, isCancelled);
+    const canvas = await toCanvas(stage, { width: settings.width, height: settings.height, canvasWidth: settings.width, canvasHeight: settings.height, pixelRatio: 1, skipFonts: false, fontEmbedCSS, cacheBust: false });
+    if (outputFrame === 0 && isCapturedFrameBlank(canvas)) throw new Error("The first master frame is blank. Wait for the scene assets to load, then retry.");
+    const videoFrame = new VideoFrame(canvas, { timestamp: Math.round((outputFrame / settings.fps) * 1_000_000), duration: Math.round(1_000_000 / settings.fps) });
+    encoder.encode(videoFrame, { keyFrame: outputFrame % (settings.fps * 2) === 0 }); videoFrame.close();
+    if (encoder.encodeQueueSize > 8) await encoder.flush();
+    if (encoderFailure) throw encoderFailure;
+  }
+  if (isCancelled()) { encoder.close(); throw new Error("Export cancelled."); }
+  await encoder.flush(); encoder.close();
+  if (mixedAudio) await encodeMixedAudio(mixedAudio, muxer, isCancelled);
+  if (isCancelled()) throw new Error("Export cancelled.");
+  muxer.finalize();
+  return new Blob([target.buffer], { type: "video/mp4" });
+}
+
+async function validateVideoProjectAssets(videoProject: VideoProject) {
+  for (const scene of videoProject.scenes) await validateExportAssets(scene.composition);
+  const assets = [
+    ...videoProject.audioTracks.flatMap((track) => track.clips.map((clip) => ({ id: clip.assetId, label: clip.fileName }))),
+    ...videoProject.globalOverlays.filter((overlay) => overlay.assetId).map((overlay) => ({ id: overlay.assetId!, label: overlay.name })),
+  ];
+  for (const asset of assets) if (!(await loadAssetBlob(asset.id))) throw new Error(`${asset.label} is missing from local storage. Attach it again before exporting.`);
+}
+
+async function waitForMasterCanvas(stage: HTMLDivElement, isCancelled: () => boolean) {
+  const deadline = performance.now() + 15_000;
+  while (!stage.querySelector(".threeCanvas canvas")) {
+    if (isCancelled()) throw new Error("Export cancelled.");
+    if (performance.now() > deadline) throw new Error("A 3D scene did not become ready during the master render.");
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+  }
+  await nextPaint();
+}
+
+async function mixProjectAudio(videoProject: VideoProject, durationSeconds: number, isCancelled: () => boolean) {
+  const sampleRate = 48_000, channels = 2, context = new OfflineAudioContext(channels, Math.ceil(durationSeconds * sampleRate), sampleRate), decodeContext = new AudioContext();
+  try {
+    for (const track of videoProject.audioTracks) for (const clip of track.clips) {
+      if (isCancelled()) throw new Error("Export cancelled.");
+      if (track.muted || clip.muted) continue;
+      const blob = await loadAssetBlob(clip.assetId); if (!blob) continue;
+      const buffer = await decodeContext.decodeAudioData(await blob.arrayBuffer()), source = context.createBufferSource(), gain = context.createGain(),
+        start = clip.startFrame / videoProject.canvas.fps, offset = clip.sourceStartFrame / videoProject.canvas.fps,
+        duration = Math.min(clip.durationInFrames / videoProject.canvas.fps, Math.max(0, buffer.duration - offset), Math.max(0, durationSeconds - start)),
+        baseGain = clamp(track.volume * clip.volume, 0, 2), fadeIn = Math.min(duration, clip.fadeInFrames / videoProject.canvas.fps), fadeOut = Math.min(duration, clip.fadeOutFrames / videoProject.canvas.fps);
+      if (duration <= 0) continue;
+      source.buffer = buffer; source.connect(gain); gain.connect(context.destination);
+      gain.gain.setValueAtTime(fadeIn ? 0 : baseGain, start);
+      if (fadeIn) gain.gain.linearRampToValueAtTime(baseGain, start + fadeIn);
+      gain.gain.setValueAtTime(baseGain, Math.max(start + fadeIn, start + duration - fadeOut));
+      if (fadeOut) gain.gain.linearRampToValueAtTime(0, start + duration);
+      source.start(start, offset, duration);
+    }
+    return await context.startRendering();
+  } finally { void decodeContext.close(); }
+}
+
+async function encodeMixedAudio(buffer: AudioBuffer, muxer: { addAudioChunk: (chunk: EncodedAudioChunk, metadata?: EncodedAudioChunkMetadata) => void }, isCancelled: () => boolean) {
+  if (!("AudioEncoder" in window) || !("AudioData" in window)) throw new Error("This browser cannot encode the master audio track. Use the latest Chrome or Edge.");
+  const config: AudioEncoderConfig = { codec: "mp4a.40.2", sampleRate: buffer.sampleRate, numberOfChannels: buffer.numberOfChannels, bitrate: 192_000 }, support = await AudioEncoder.isConfigSupported(config);
+  if (!support.supported) throw new Error("AAC audio encoding is unavailable in this browser.");
+  let failure: Error | undefined;
+  const encoder = new AudioEncoder({ output: (chunk, metadata) => muxer.addAudioChunk(chunk, metadata), error: (reason) => { failure = reason; } });
+  encoder.configure(config);
+  const blockSize = 1024;
+  for (let start = 0; start < buffer.length; start += blockSize) {
+    if (isCancelled()) break;
+    const frames = Math.min(blockSize, buffer.length - start), data = new Float32Array(frames * buffer.numberOfChannels);
+    for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) data.set(buffer.getChannelData(channel).subarray(start, start + frames), channel * frames);
+    const audioData = new AudioData({ format: "f32-planar", sampleRate: buffer.sampleRate, numberOfFrames: frames, numberOfChannels: buffer.numberOfChannels, timestamp: Math.round((start / buffer.sampleRate) * 1_000_000), data });
+    encoder.encode(audioData); audioData.close();
+    if (encoder.encodeQueueSize > 20) await encoder.flush();
+    if (failure) throw failure;
+  }
+  if (isCancelled()) { encoder.close(); return; }
+  await encoder.flush(); encoder.close(); if (failure) throw failure;
 }
 
 async function renderProjectMp4(
