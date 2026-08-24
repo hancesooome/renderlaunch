@@ -1470,6 +1470,7 @@ function Timeline({
   ) => {
     const target = event.target as HTMLElement;
     if (target.closest("button, .clip, .ruler, .trackLabel")) return;
+    event.preventDefault();
     const surface = event.currentTarget,
       surfaceRect = surface.getBoundingClientRect(),
       startX = event.clientX,

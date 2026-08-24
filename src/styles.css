@@ -1400,6 +1400,13 @@ footer > .tracks {
   position: relative;
   min-width: 100%;
   height: max-content;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+.timelineSurface * {
+  user-select: none;
+  -webkit-user-select: none;
 }
 .timelineSurface .trackLabel {
   position: sticky;
