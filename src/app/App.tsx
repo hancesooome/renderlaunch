@@ -883,6 +883,10 @@ function VideoEditorWorkspace({
 }) {
   const [masterZoom, setMasterZoom] = useState(1),
     [masterExporting, setMasterExporting] = useState(false),
+    [masterLibraryTab, setMasterLibraryTab] = useState<"scenes" | "assets" | "templates">("scenes"),
+    [masterLeftWidth, setMasterLeftWidth] = useState(248),
+    [masterRightWidth, setMasterRightWidth] = useState(276),
+    [masterTimelineHeight, setMasterTimelineHeight] = useState(() => Math.round(clamp(window.innerHeight * .38, 260, 460))),
     [draggedSceneId, setDraggedSceneId] = useState<string>(),
     [selectedAudio, setSelectedAudio] = useState<{ trackId: string; clipId: string }>(),
     [selectedOverlayId, setSelectedOverlayId] = useState<string>(),
@@ -1070,8 +1074,21 @@ function VideoEditorWorkspace({
     target.addEventListener("pointerup", end);
     target.addEventListener("pointercancel", end);
   };
+  const resizeMasterPanel = (event: React.PointerEvent<HTMLDivElement>, panel: "left" | "right" | "timeline") => {
+    event.preventDefault();
+    const target = event.currentTarget, startX = event.clientX, startY = event.clientY,
+      startValue = panel === "left" ? masterLeftWidth : panel === "right" ? masterRightWidth : masterTimelineHeight;
+    target.setPointerCapture(event.pointerId);
+    const move = (pointerEvent: globalThis.PointerEvent) => {
+      if (panel === "left") setMasterLeftWidth(clamp(startValue + pointerEvent.clientX - startX, 190, 360));
+      else if (panel === "right") setMasterRightWidth(clamp(startValue + startX - pointerEvent.clientX, 230, 390));
+      else setMasterTimelineHeight(clamp(startValue + startY - pointerEvent.clientY, 240, window.innerHeight * .55));
+    };
+    const end = () => { target.removeEventListener("pointermove", move); target.removeEventListener("pointerup", end); target.removeEventListener("pointercancel", end); };
+    target.addEventListener("pointermove", move); target.addEventListener("pointerup", end); target.addEventListener("pointercancel", end);
+  };
   return (
-    <main className="videoEditorWorkspace">
+    <main className="videoEditorWorkspace masterWorkspaceV2" style={{ "--master-left": `${masterLeftWidth}px`, "--master-right": `${masterRightWidth}px`, "--master-timeline": `${masterTimelineHeight}px` } as React.CSSProperties}>
       <header className="videoEditorHeader">
         <div className="videoProjectIdentity">
           <button className="libraryButton" title="Project library" onClick={onOpenLibrary}><I.LayoutGrid /></button>
@@ -1097,17 +1114,14 @@ function VideoEditorWorkspace({
         </div>
       </header>
       <section className="videoEditorBody">
-        <aside className="sceneBin">
-          <div className="sceneBinHead">
-            <div>
-              <h2>Scenes</h2>
-              <small>Storyboard</small>
-            </div>
-            <button title="Add scene" onClick={onAddScene}>
-              <I.Plus />
-            </button>
+        <aside className="sceneBin masterLibrarySidebar">
+          <div className="masterPanelTitle"><b>Library</b><button title="Project library" onClick={onOpenLibrary}><I.FolderOpen /></button></div>
+          <div className="masterLibraryTabs">
+            <button className={masterLibraryTab === "scenes" ? "active" : ""} onClick={() => setMasterLibraryTab("scenes")}><I.Clapperboard /><span>Scenes</span></button>
+            <button className={masterLibraryTab === "assets" ? "active" : ""} onClick={() => setMasterLibraryTab("assets")}><I.Files /><span>Assets</span></button>
+            <button className={masterLibraryTab === "templates" ? "active" : ""} onClick={() => setMasterLibraryTab("templates")}><I.LayoutTemplate /><span>Templates</span></button>
           </div>
-          <div className="sceneCards">
+          {masterLibraryTab === "scenes" && <><div className="masterLibrarySectionHead"><span>{scenes.length} compositions</span><button title="Add scene" onClick={onAddScene}><I.Plus /></button></div><div className="sceneCards">
             {scenes.map((scene, index) => (
               <button
                 key={scene.id}
@@ -1145,8 +1159,7 @@ function VideoEditorWorkspace({
                 <I.ChevronRight />
               </button>
             ))}
-          </div>
-          <div className="sceneActions">
+          </div><div className="sceneActions">
             <button onClick={onDuplicateScene}>
               <I.Copy /> Duplicate
             </button>
@@ -1157,58 +1170,26 @@ function VideoEditorWorkspace({
             >
               <I.Trash2 /> Delete
             </button>
-          </div>
+          </div></>}
+          {masterLibraryTab === "assets" && <div className="masterAssetList">
+            <div className="masterLibrarySectionHead"><span>Project media</span><button title="Asset library"><I.Plus /></button></div>
+            {activeScene.composition.model && <button><span className="assetKind model"><I.Box /></span><div><b>{activeScene.composition.model.fileName}</b><small>3D model</small></div><I.GripVertical /></button>}
+            {activeScene.composition.screen?.mediaFileName && <button><span className="assetKind video"><I.MonitorPlay /></span><div><b>{activeScene.composition.screen.mediaFileName}</b><small>Screen media</small></div><I.GripVertical /></button>}
+            {videoProject.audioTracks.flatMap((track) => track.clips.map((clip) => <button key={clip.id}><span className="assetKind audio"><I.AudioLines /></span><div><b>{clip.fileName}</b><small>{track.name}</small></div><I.GripVertical /></button>))}
+            {!activeScene.composition.model && !activeScene.composition.screen?.mediaFileName && !videoProject.audioTracks.some((track) => track.clips.length) && <div className="masterPanelEmpty"><I.Files /><b>No project media</b><span>Persistent uploads arrive in Phase 23.</span></div>}
+          </div>}
+          {masterLibraryTab === "templates" && <div className="masterTemplateShelf"><div className="masterLibrarySectionHead"><span>Reusable scenes</span><button title="Open template library" onClick={onOpenLibrary}><I.Plus /></button></div>{scenes.map((scene) => <button key={scene.id} onDoubleClick={onOpenScene} onClick={() => onSelectScene(scene.id)}><div className={`templateShelfThumb ${bgClass(scene.composition.background.preset)}`} style={backgroundStyle(scene.composition, 0)}>{scene.thumbnailDataUrl || scene.composition.thumbnailDataUrl ? <img src={scene.thumbnailDataUrl ?? scene.composition.thumbnailDataUrl} alt="" /> : <I.LayoutTemplate />}</div><b>{scene.name}</b><small>Drag-ready clip</small></button>)}</div>}
+          <div className="masterPanelResize horizontal right" onPointerDown={(event) => resizeMasterPanel(event, "left")} />
         </aside>
         <section className="masterPreviewPanel">
           <div className="masterPreviewHead">
             <div>
-              <small>SELECTED SCENE</small>
-              <h2>{activeScene.name}</h2>
+              <small>COMPOSITION</small>
+              <h2>Launch Video · {activeScene.name}</h2>
             </div>
             <div className="masterPreviewActions">
-              <label>
-                Transition
-                <select
-                  disabled={!nextScene}
-                  value={activeScene.transitionToNext.type}
-                  onChange={(event) =>
-                    onSetTransition(
-                      activeScene.id,
-                      event.target.value as SceneTransitionType,
-                      activeScene.transitionToNext.durationInFrames,
-                    )
-                  }
-                >
-                  <option value="cut">Cut</option>
-                  <option value="crossfade">Crossfade</option>
-                  <option value="fade-black">Fade Through Black</option>
-                  <option value="slide">Slide</option>
-                  <option value="zoom">Zoom</option>
-                  <option value="blur">Blur Dissolve</option>
-                </select>
-              </label>
-              <label>
-                Frames
-                <input
-                  type="number"
-                  min="1"
-                  max="90"
-                  disabled={
-                    !nextScene || activeScene.transitionToNext.type === "cut"
-                  }
-                  value={activeScene.transitionToNext.durationInFrames}
-                  onChange={(event) =>
-                    onSetTransition(
-                      activeScene.id,
-                      activeScene.transitionToNext.type,
-                      Number(event.target.value),
-                    )
-                  }
-                />
-              </label>
-              <button onClick={onOpenScene}>
-                <I.SquarePen /> Edit Scene
-              </button>
+              <button title="Fit composition"><I.Maximize2 /> Fit</button>
+              <button title="Open scene editor" onClick={onOpenScene}><I.SquarePen /></button>
             </div>
           </div>
           <div
@@ -1241,8 +1222,30 @@ function VideoEditorWorkspace({
             </b>
           </div>
         </section>
+        <aside className="masterInspectorPanel">
+          <div className="masterPanelResize horizontal left" onPointerDown={(event) => resizeMasterPanel(event, "right")} />
+          <div className="masterPanelTitle"><b>Inspector</b><I.SlidersHorizontal /></div>
+          {selectedOverlay ? <div className="masterInspectorContent">
+            <div className="inspectorSelection"><span className="violet"><I.Layers2 /></span><div><small>GLOBAL OVERLAY</small><b>{selectedOverlay.name}</b></div></div>
+            <section><h3>Content</h3>{selectedOverlay.type !== "logo" && selectedOverlay.type !== "watermark" ? <textarea value={selectedOverlay.content} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { content: event.target.value })} /> : <label className="masterFileField"><I.Upload /> {selectedOverlay.fileName ?? "Upload image"}<input type="file" accept="image/*" onChange={(event) => void uploadOverlayImage(selectedOverlay.id, event.target.files?.[0])} /></label>}</section>
+            <section><h3>Transform</h3><div className="inspectorGrid"><label>X<input type="number" value={selectedOverlay.x} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { x: clamp(Number(event.target.value), 0, 100) })} /></label><label>Y<input type="number" value={selectedOverlay.y} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { y: clamp(Number(event.target.value), 0, 100) })} /></label><label>Width<input type="number" value={selectedOverlay.width} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { width: clamp(Number(event.target.value), 5, 100) })} /></label><label>Opacity<input type="number" step=".05" value={selectedOverlay.opacity} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { opacity: clamp(Number(event.target.value), 0, 1) })} /></label></div></section>
+            <section><h3>Appearance</h3><div className="inspectorGrid"><label>Size<input type="number" value={selectedOverlay.fontSize} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { fontSize: clamp(Number(event.target.value), 8, 240) })} /></label><label>Color<input type="color" value={selectedOverlay.color} onChange={(event) => updateGlobalOverlay(selectedOverlay.id, { color: event.target.value })} /></label></div></section>
+            <button className="inspectorDelete" onClick={() => { deleteGlobalOverlay(selectedOverlay.id); setSelectedOverlayId(undefined); }}><I.Trash2 /> Delete overlay</button>
+          </div> : selectedClip && selectedAudio ? <div className="masterInspectorContent">
+            <div className="inspectorSelection"><span className="green"><I.AudioLines /></span><div><small>AUDIO CLIP</small><b>{selectedClip.fileName}</b></div></div>
+            <section><h3>Timing</h3><div className="inspectorGrid"><label>Start<input type="number" value={selectedClip.startFrame} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { startFrame: Math.max(0, Number(event.target.value)) })} /></label><label>Duration<input type="number" value={selectedClip.durationInFrames} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { durationInFrames: Math.max(1, Number(event.target.value)) })} /></label></div></section>
+            <section><h3>Audio</h3><label className="inspectorRange">Volume<input type="range" min="0" max="2" step=".05" value={selectedClip.volume} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { volume: Number(event.target.value) })} /><span>{Math.round(selectedClip.volume * 100)}%</span></label><div className="inspectorGrid"><label>Fade in<input type="number" min="0" value={selectedClip.fadeInFrames} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { fadeInFrames: Math.max(0, Number(event.target.value)) })} /></label><label>Fade out<input type="number" min="0" value={selectedClip.fadeOutFrames} onChange={(event) => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { fadeOutFrames: Math.max(0, Number(event.target.value)) })} /></label></div></section>
+            <button onClick={() => updateAudioClip(selectedAudio.trackId, selectedAudio.clipId, { muted: !selectedClip.muted })}>{selectedClip.muted ? <I.Volume2 /> : <I.VolumeX />} {selectedClip.muted ? "Unmute clip" : "Mute clip"}</button><button className="inspectorDelete" onClick={() => { deleteAudioClip(selectedAudio.trackId, selectedAudio.clipId); setSelectedAudio(undefined); }}><I.Trash2 /> Delete clip</button>
+          </div> : <div className="masterInspectorContent">
+            <div className="inspectorSelection"><span className="blue"><I.Clapperboard /></span><div><small>SCENE CLIP {activeIndex + 1}</small><b>{activeScene.name}</b></div></div>
+            <section><h3>Clip</h3><div className="inspectorGrid"><label>In<input value={activeScene.sourceStartFrame} readOnly /></label><label>Duration<input value={activeScene.durationInFrames} readOnly /></label></div><button className="wide" onClick={onOpenScene}><I.SquarePen /> Open scene editor</button></section>
+            <section><h3>Transition to next</h3><label>Style<select disabled={!nextScene} value={activeScene.transitionToNext.type} onChange={(event) => onSetTransition(activeScene.id, event.target.value as SceneTransitionType, activeScene.transitionToNext.durationInFrames)}><option value="cut">Cut</option><option value="crossfade">Crossfade</option><option value="fade-black">Fade through black</option><option value="slide">Slide</option><option value="zoom">Zoom</option><option value="blur">Blur dissolve</option></select></label><label>Duration (frames)<input type="number" min="1" max="90" disabled={!nextScene || activeScene.transitionToNext.type === "cut"} value={activeScene.transitionToNext.durationInFrames} onChange={(event) => onSetTransition(activeScene.id, activeScene.transitionToNext.type, Number(event.target.value))} /></label></section>
+            <section><h3>Actions</h3><div className="inspectorActions"><button onClick={onDuplicateScene}><I.Copy /> Duplicate</button><button disabled={scenes.length === 1} onClick={onDeleteScene}><I.Trash2 /> Delete</button></div></section>
+          </div>}
+        </aside>
       </section>
       <section className="masterTimelinePanel">
+        <div className="masterPanelResize vertical" onPointerDown={(event) => resizeMasterPanel(event, "timeline")} />
         <MasterAudioEngine
           tracks={videoProject.audioTracks}
           frame={shownMasterFrame}
