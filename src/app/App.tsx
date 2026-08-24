@@ -1333,9 +1333,7 @@ function VideoEditorWorkspace({
                 : backgroundStyle(project, renderFrame)
             }
           >
-            <MasterPlaybackVisual playback={playback} videoProject={normalizedVideoProject} playing={playing} />
-            <MasterMediaClips clips={[...videoTimelineTrack.clips, ...imageTimelineTrack.clips].filter((clip) => clip.referenceType === "asset")} frame={shownMasterFrame} fps={videoProject.canvas.fps} playing={playing} />
-            <MasterOverlays overlays={videoProject.globalOverlays} frame={shownMasterFrame} />
+            <MasterPreviewCompositor playback={playback} videoProject={normalizedVideoProject} tracks={unifiedTimelineTracks} frame={shownMasterFrame} playing={playing} />
           </div>
           <div className="masterPreviewControls">
             <button onClick={() => onPlay(!playing)}>
@@ -1391,12 +1389,6 @@ function VideoEditorWorkspace({
       <section ref={masterTimelinePanelRef} className="masterTimelinePanel" onPointerDown={beginTimelineMarquee}>
         {timelineMarquee && <div className="masterTimelineMarquee" style={timelineMarquee} />}
         <div className="masterPanelResize vertical" onPointerDown={(event) => resizeMasterPanel(event, "timeline")} />
-        <MasterAudioEngine
-          tracks={videoProject.audioTracks}
-          frame={shownMasterFrame}
-          fps={videoProject.canvas.fps}
-          playing={playing}
-        />
         <div className="masterTimelineHead">
           <div>
             <b>Master Timeline</b>
@@ -1693,6 +1685,23 @@ function AssetLibraryItem({ asset, folders, referenced, onRefresh }: { asset: St
   </div>;
 }
 
+function MasterPreviewCompositor({ playback, videoProject, tracks, frame, playing, onMediaFrameReady }: { playback: ReturnType<typeof resolveMasterFrame>; videoProject: VideoProject; tracks: TimelineTrack[]; frame: number; playing: boolean; onMediaFrameReady?: (frame: number) => void }) {
+  const orderedTracks = [...tracks].sort((a, b) => a.order - b.order), sceneTrack = orderedTracks.find((track) => track.type === "scene"),
+    audioTracks = videoProject.audioTracks.map((audioTrack) => { const timelineTrack = orderedTracks.find((track) => track.id === `master-audio:${audioTrack.id}`); return { ...audioTrack, muted: audioTrack.muted || timelineTrack?.muted === true || timelineTrack?.visible === false }; });
+  return <div className="masterCompositor">
+    {sceneTrack?.visible !== false && <div className="masterCompositorTrack" style={{ zIndex: sceneTrack?.order ?? 0, opacity: sceneTrack?.opacity ?? 1 }}><MasterPlaybackVisual playback={playback} videoProject={videoProject} playing={playing} onMediaFrameReady={onMediaFrameReady} /></div>}
+    {orderedTracks.filter((track) => track.visible && track.type !== "scene" && track.type !== "audio").map((track) => {
+      const assetClips = track.clips.filter((clip) => clip.referenceType === "asset"), overlayIds = new Set(track.clips.filter((clip) => clip.referenceType === "overlay").map((clip) => clip.referenceId)),
+        overlays = videoProject.globalOverlays.filter((overlay) => overlayIds.has(overlay.id));
+      return <div key={track.id} className="masterCompositorTrack" data-compositor-track={track.id} style={{ zIndex: track.order, opacity: track.opacity }}>
+        {!!assetClips.length && <MasterMediaClips clips={assetClips} frame={frame} fps={videoProject.canvas.fps} playing={playing} />}
+        {!!overlays.length && <MasterOverlays overlays={overlays} frame={frame} />}
+      </div>;
+    })}
+    <MasterAudioEngine tracks={audioTracks} frame={frame} fps={videoProject.canvas.fps} playing={playing} />
+  </div>;
+}
+
 function MasterOverlays({ overlays, frame }: { overlays: GlobalOverlay[]; frame: number }) {
   return <div className="masterOverlays">{overlays.filter((overlay) => frame >= overlay.startFrame && frame < overlay.startFrame + overlay.durationInFrames).map((overlay) => <MasterOverlay key={overlay.id} overlay={overlay} frame={frame} />)}</div>;
 }
@@ -1906,7 +1915,7 @@ function ScenePreviewLayer({
   );
 }
 
-function MasterPlaybackVisual({ playback, videoProject, playing }: { playback: ReturnType<typeof resolveMasterFrame>; videoProject: VideoProject; playing: boolean }) {
+function MasterPlaybackVisual({ playback, videoProject, playing, onMediaFrameReady }: { playback: ReturnType<typeof resolveMasterFrame>; videoProject: VideoProject; playing: boolean; onMediaFrameReady?: (frame: number) => void }) {
   const [modelReady, setModelReady] = useState<Record<string, boolean>>({}), [mediaReady, setMediaReady] = useState<Record<string, boolean>>({});
   const timeline = sceneStarts(videoProject), upcoming = timeline.scenes[playback.sceneIndex + 1], upcomingStart = timeline.starts[playback.sceneIndex + 1],
     shouldPreload = !playback.transition && upcoming && playback.masterFrame >= upcomingStart - videoProject.canvas.fps;
@@ -1921,7 +1930,7 @@ function MasterPlaybackVisual({ playback, videoProject, playing }: { playback: R
         { scene: playback.scene, frame: playback.scene.sourceStartFrame + playback.localFrame, style: undefined, live: true },
         ...(shouldPreload ? [{ scene: upcoming, frame: upcoming.sourceStartFrame, style: { opacity: 0, pointerEvents: "none" } as React.CSSProperties, live: false }] : []),
       ];
-  return <>{entries.map((entry) => <ScenePreviewLayer key={entry.scene.id} project={entry.scene.composition} frame={entry.frame} style={entry.style} playing={playing && entry.live} liveMediaPlayback onReady={() => setModelReady((current) => current[entry.scene.id] ? current : { ...current, [entry.scene.id]: true })} onMediaFrameReady={() => setMediaReady((current) => current[entry.scene.id] ? current : { ...current, [entry.scene.id]: true })} />)}</>;
+  return <>{entries.map((entry) => <ScenePreviewLayer key={entry.scene.id} project={entry.scene.composition} frame={entry.frame} style={entry.style} playing={playing && entry.live} liveMediaPlayback onReady={() => setModelReady((current) => current[entry.scene.id] ? current : { ...current, [entry.scene.id]: true })} onMediaFrameReady={() => { setMediaReady((current) => current[entry.scene.id] ? current : { ...current, [entry.scene.id]: true }); if (entry.live) onMediaFrameReady?.(entry.frame); }} />)}</>;
 }
 
 function transitionLayerStyles(transition: NonNullable<ReturnType<typeof resolveMasterFrame>["transition"]>) {
@@ -3779,8 +3788,7 @@ function MasterExportDialog({ videoProject, onClose }: { videoProject: VideoProj
     resolved = resolveMasterFrame(normalized, masterRenderFrame), composition = resolved.scene.composition,
     localRenderFrame = resolved.scene.sourceStartFrame + resolved.localFrame,
     eta = progress > 0 ? Math.max(0, ((performance.now() - startedAt.current) / 1000) * (100 - progress) / progress) : 0,
-    exportTracks = buildUnifiedTimelineTracks(normalized.scenes, normalized.audioTracks, normalized.globalOverlays, normalized.timelineTracks),
-    exportMediaClips = exportTracks.filter((track) => track.type === "image" || track.type === "video").flatMap((track) => track.clips).filter((clip) => clip.referenceType === "asset");
+    exportTracks = buildUnifiedTimelineTracks(normalized.scenes, normalized.audioTracks, normalized.globalOverlays, normalized.timelineTracks);
   useEffect(() => () => { cancelled.current = true; if (downloadUrl) URL.revokeObjectURL(downloadUrl); }, [downloadUrl]);
   const start = async () => {
     if (!stage.current) return;
@@ -3812,9 +3820,7 @@ function MasterExportDialog({ videoProject, onClose }: { videoProject: VideoProj
     </section>
     <div className="renderStage" aria-hidden="true" style={{ width, height }}>
       <div ref={stage} data-media-frame={mediaReadyFrame} className={`renderComposition ${bgClass(composition.background.preset)}`} style={{ ...backgroundStyle(composition, localRenderFrame), width, height }}>
-        {resolved.transition ? <TransitionPreview transition={resolved.transition} /> : <ScenePreviewLayer project={composition} frame={localRenderFrame} onMediaFrameReady={setMediaReadyFrame} />}
-        <MasterMediaClips clips={exportMediaClips} frame={masterRenderFrame} fps={videoProject.canvas.fps} playing={false} />
-        <MasterOverlays overlays={videoProject.globalOverlays} frame={masterRenderFrame} />
+        <MasterPreviewCompositor playback={resolved} videoProject={normalized} tracks={exportTracks} frame={masterRenderFrame} playing={false} onMediaFrameReady={setMediaReadyFrame} />
       </div>
     </div>
   </div>;

@@ -407,6 +407,7 @@ export const timelineTrackSchema = z.object({
   locked: z.boolean().default(false),
   muted: z.boolean().default(false),
   visible: z.boolean().default(true),
+  opacity: z.number().min(0).max(1).default(1),
   clips: z.array(timelineClipSchema).default([]),
 });
 
@@ -423,6 +424,10 @@ export function buildUnifiedTimelineTracks(
   existingTracks: Array<z.infer<typeof timelineTrackSchema>> = [],
 ) {
   const visual = { x: 50, y: 50, scale: 1, opacity: 1, crop: "fit" as const };
+  const trackState = (id: string) => {
+    const existing = existingTracks.find((track) => track.id === id);
+    return { locked: existing?.locked ?? false, muted: existing?.muted ?? false, visible: existing?.visible ?? true, opacity: existing?.opacity ?? 1, order: existing?.order };
+  };
   const standalone = (type: z.infer<typeof timelineClipTypeSchema>) => existingTracks.filter((track) => track.type === type).flatMap((track) => track.clips).filter((clip) => clip.referenceType === "asset");
   const ordered = [...scenes].sort((a, b) => a.order - b.order), starts: number[] = [];
   let cursor = 0;
@@ -432,18 +437,18 @@ export function buildUnifiedTimelineTracks(
     cursor += scene.durationInFrames - Math.max(0, transition);
   });
   const tracks: Array<z.infer<typeof timelineTrackSchema>> = [{
-    id: "master-scenes", type: "scene", name: "Scenes", order: 0, locked: false, muted: false, visible: true,
+    id: "master-scenes", type: "scene", name: "Scenes", ...trackState("master-scenes"), order: trackState("master-scenes").order ?? 0,
     clips: ordered.map((scene, index) => ({ id: `scene-clip:${scene.id}`, type: "scene", name: scene.name, startFrame: starts[index], durationInFrames: scene.durationInFrames, sourceStartFrame: scene.sourceStartFrame, referenceType: "scene", referenceId: scene.id, ...visual })),
   }, {
-    id: "master-images", type: "image", name: "Images & logos", order: 1, locked: false, muted: false, visible: true,
+    id: "master-images", type: "image", name: "Images & logos", ...trackState("master-images"), order: trackState("master-images").order ?? 1,
     clips: [...overlays.filter((overlay) => overlay.type === "logo" || overlay.type === "watermark").map((overlay) => ({ id: `overlay-clip:${overlay.id}`, type: "image" as const, name: overlay.name, startFrame: overlay.startFrame, durationInFrames: overlay.durationInFrames, sourceStartFrame: 0, referenceType: "overlay" as const, referenceId: overlay.id, assetId: overlay.assetId, ...visual })), ...standalone("image")],
   }, {
-    id: "master-text", type: "text", name: "Titles & captions", order: 2, locked: false, muted: false, visible: true,
+    id: "master-text", type: "text", name: "Titles & captions", ...trackState("master-text"), order: trackState("master-text").order ?? 2,
     clips: overlays.filter((overlay) => overlay.type !== "logo" && overlay.type !== "watermark").map((overlay) => ({ id: `overlay-clip:${overlay.id}`, type: "text", name: overlay.name, startFrame: overlay.startFrame, durationInFrames: overlay.durationInFrames, sourceStartFrame: 0, referenceType: "overlay", referenceId: overlay.id, ...visual })),
   }, {
-    id: "master-video", type: "video", name: "Video", order: 3, locked: false, muted: false, visible: true, clips: standalone("video"),
+    id: "master-video", type: "video", name: "Video", ...trackState("master-video"), order: trackState("master-video").order ?? 3, clips: standalone("video"),
   }];
-  audioTracks.forEach((track, index) => tracks.push({ id: `master-audio:${track.id}`, type: "audio", name: track.name, order: 4 + index, locked: false, muted: track.muted, visible: true, clips: track.clips.map((clip) => ({ id: `audio-clip:${clip.id}`, type: "audio", name: clip.fileName, startFrame: clip.startFrame, durationInFrames: clip.durationInFrames, sourceStartFrame: clip.sourceStartFrame, referenceType: "audio-clip", referenceId: clip.id, assetId: clip.assetId, ...visual })) }));
+  audioTracks.forEach((track, index) => { const id = `master-audio:${track.id}`, state = trackState(id); tracks.push({ id, type: "audio", name: track.name, ...state, order: state.order ?? 4 + index, muted: track.muted || state.muted, clips: track.clips.map((clip) => ({ id: `audio-clip:${clip.id}`, type: "audio", name: clip.fileName, startFrame: clip.startFrame, durationInFrames: clip.durationInFrames, sourceStartFrame: clip.sourceStartFrame, referenceType: "audio-clip", referenceId: clip.id, assetId: clip.assetId, ...visual })) }); });
   return tracks;
 }
 
