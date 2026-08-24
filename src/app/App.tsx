@@ -10,6 +10,7 @@ import * as I from "lucide-react";
 import Moveable from "react-moveable";
 import type { LucideIcon } from "lucide-react";
 import { clamp, formatTimecode } from "../animation/frame";
+import { evaluateTextAnimation } from "../animation/textAnimation";
 import {
   createColorTrack,
   createNumericTrack,
@@ -20,7 +21,11 @@ import {
   upsertNumericKeyframe,
 } from "../animation/keyframes";
 import type { KeyframeTrack } from "../project/schema";
-import type { ProjectLayer, TemplateProject } from "../project/schema";
+import type {
+  ProjectLayer,
+  TemplateProject,
+  TextAnimationPreset,
+} from "../project/schema";
 import { useEditorStore } from "../store/editorStore";
 import type { TransformMode } from "../store/editorStore";
 import { useEditorRuntime } from "../store/useEditorRuntime";
@@ -3571,7 +3576,8 @@ function OverlayItem({
         frame,
         layer.textStyle.color,
       ),
-    };
+    },
+    textAnimation = evaluateTextAnimation(layer, frame);
   return (
     <div
       data-overlay-id={layer.id}
@@ -3585,8 +3591,8 @@ function OverlayItem({
         top: transform.y * scale,
         width: transform.width * scale,
         height: transform.height * scale,
-        opacity: transform.opacity,
-        transform: `rotate(${transform.rotation}deg)`,
+        opacity: transform.opacity * textAnimation.opacity,
+        transform: `translateY(${textAnimation.translateY * scale}px) rotate(${transform.rotation}deg) scale(${textAnimation.scale})`,
         zIndex: layer.zIndex,
         fontFamily: style.fontFamily,
         fontWeight: style.fontWeight,
@@ -4206,6 +4212,45 @@ function OverlayInspectorV2({
                 {value}
               </button>
             ))}
+          </div>
+        </Panel>
+      )}
+      {layer.type === "text" && (
+        <Panel title="Text Animation">
+          <Select
+            label="Entrance"
+            value={layer.textAnimation.entrance}
+            options={["none", "fade", "slide-up", "scale"]}
+            onChange={(value) =>
+              mutate((item) => {
+                item.textAnimation.entrance = value as TextAnimationPreset;
+              })
+            }
+          />
+          <Select
+            label="Exit"
+            value={layer.textAnimation.exit}
+            options={["none", "fade", "slide-up", "scale"]}
+            onChange={(value) =>
+              mutate((item) => {
+                item.textAnimation.exit = value as TextAnimationPreset;
+              })
+            }
+          />
+          <div className="row">
+            <label>Duration</label>
+            <Field
+              label="Frames"
+              value={layer.textAnimation.durationInFrames}
+              onChange={(value) =>
+                mutate((item) => {
+                  item.textAnimation.durationInFrames = Math.max(
+                    1,
+                    Math.round(value),
+                  );
+                })
+              }
+            />
           </div>
         </Panel>
       )}
@@ -4912,6 +4957,11 @@ function createOverlayLayer(
       align: "left",
       lineHeight: 1.05,
       letterSpacing: -1,
+    },
+    textAnimation: {
+      entrance: "none",
+      exit: "none",
+      durationInFrames: 18,
     },
   };
 }

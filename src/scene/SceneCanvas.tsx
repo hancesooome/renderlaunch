@@ -42,6 +42,7 @@ import {
   evaluateNumericProperty,
 } from "../animation/keyframes";
 import { useAssetUrl } from "../model/useAssetUrl";
+import { evaluateTextAnimation } from "../animation/textAnimation";
 
 type TransformValue = {
   position: [number, number, number];
@@ -352,7 +353,8 @@ function Flat3DText({
       "text.letterSpacing",
       frame,
       layer.textStyle.letterSpacing,
-    );
+    ),
+    textAnimation = evaluateTextAnimation(layer, frame);
   const commit = () => {
     if (!dragging.current || !group.current) return;
     dragging.current = false;
@@ -387,7 +389,8 @@ function Flat3DText({
               textAlign: layer.textStyle.align,
               lineHeight: layer.textStyle.lineHeight,
               letterSpacing,
-              opacity,
+              opacity: opacity * textAnimation.opacity,
+              transform: `translateY(${textAnimation.translateY}px) scale(${textAnimation.scale})`,
             }}
           >
             {layer.content}

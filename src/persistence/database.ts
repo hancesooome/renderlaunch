@@ -87,6 +87,11 @@ export async function loadRecentProject(): Promise<TemplateProject | null> {
         lineHeight: 1.2,
         letterSpacing: 0,
       },
+      textAnimation: {
+        entrance: "none",
+        exit: "none",
+        durationInFrames: 18,
+      },
     });
   return result.data;
 }

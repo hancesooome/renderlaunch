@@ -26,6 +26,11 @@ export function createDefaultProject(): TemplateProject {
       lineHeight: 1.05,
       letterSpacing: -1,
     },
+    textAnimation: {
+      entrance: "none" as const,
+      exit: "none" as const,
+      durationInFrames: 18,
+    },
   };
   return {
     schemaVersion: 2,

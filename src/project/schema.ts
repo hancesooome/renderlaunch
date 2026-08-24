@@ -1,6 +1,12 @@
 import { z } from "zod";
 
 const vector3 = z.tuple([z.number(), z.number(), z.number()]);
+export const textAnimationPresetSchema = z.enum([
+  "none",
+  "fade",
+  "slide-up",
+  "scale",
+]);
 
 export const keyframeEasingSchema = z.enum([
   "linear",
@@ -169,6 +175,13 @@ export const layerSchema = z.object({
       lineHeight: 1.05,
       letterSpacing: -1,
     }),
+  textAnimation: z
+    .object({
+      entrance: textAnimationPresetSchema,
+      exit: textAnimationPresetSchema,
+      durationInFrames: z.number().int().min(1).max(300),
+    })
+    .default({ entrance: "none", exit: "none", durationInFrames: 18 }),
   media: z
     .object({
       assetId: z.string(),
@@ -296,5 +309,6 @@ export function migrateProjectData(value: unknown): unknown {
 export type TemplateProject = z.infer<typeof projectSchema>;
 export type ProjectLayer = z.infer<typeof layerSchema>;
 export type KeyframeTrack = z.infer<typeof keyframeTrackSchema>;
+export type TextAnimationPreset = z.infer<typeof textAnimationPresetSchema>;
 export type NumericKeyframe = z.infer<typeof numericKeyframeSchema>;
 export type ColorKeyframe = z.infer<typeof colorKeyframeSchema>;
