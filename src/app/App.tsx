@@ -835,7 +835,7 @@ function ProjectLibrary({ currentProject, activeComposition, onOpen, onCreate, o
   </main>;
 }
 
-function VideoEditorWorkspace({
+function PopulatedVideoEditorWorkspace({
   videoProject,
   project,
   frame,
@@ -964,7 +964,9 @@ function VideoEditorWorkspace({
     nextScene = scenes[activeIndex + 1];
   const unifiedTimelineTracks = buildUnifiedTimelineTracks(scenes, videoProject.audioTracks, videoProject.globalOverlays, videoProject.timelineTracks),
     videoTimelineTrack = unifiedTimelineTracks.find((track) => track.type === "video")!,
-    imageTimelineTrack = unifiedTimelineTracks.find((track) => track.type === "image")!;
+    imageTimelineTrack = unifiedTimelineTracks.find((track) => track.type === "image")!,
+    sceneTimelineTrack = unifiedTimelineTracks.find((track) => track.type === "scene")!,
+    masterVideoTrack = { ...videoTimelineTrack, name: "Video", clips: [...sceneTimelineTrack.clips, ...videoTimelineTrack.clips] };
   const selectedClip = selectedAudio
     ? videoProject.audioTracks
         .find((track) => track.id === selectedAudio.trackId)
@@ -1097,7 +1099,7 @@ function VideoEditorWorkspace({
         else onDuplicateScene();
       } else if ((event.key === "Delete" || event.key === "Backspace") && selectedTimelineIds.length) {
         event.preventDefault(); deleteTimelineSelection();
-      } else if (event.key === "Delete" && (selectedAssetClipId || scenes.length > 1)) {
+      } else if (event.key === "Delete" && (selectedAssetClipId || scenes.length > 0)) {
         event.preventDefault();
         if (selectedAssetClipId) { deleteTimelineAssetClip(selectedAssetClipId, rippleDelete); setSelectedAssetClipId(undefined); }
         else onDeleteScene();
@@ -1296,7 +1298,6 @@ function VideoEditorWorkspace({
             </button>
             <button
               className="danger"
-              disabled={scenes.length === 1}
               onClick={onDeleteScene}
             >
               <I.Trash2 /> Delete
@@ -1382,7 +1383,7 @@ function VideoEditorWorkspace({
             <div className="inspectorSelection"><span className="blue"><I.Clapperboard /></span><div><small>SCENE CLIP {activeIndex + 1}</small><b>{activeScene.name}</b></div></div>
             <section><h3>Clip</h3><div className="inspectorGrid"><label>In<input value={activeScene.sourceStartFrame} readOnly /></label><label>Duration<input value={activeScene.durationInFrames} readOnly /></label></div><button className="wide" onClick={onOpenScene}><I.SquarePen /> Open scene editor</button></section>
             <section><h3>Transition to next</h3><label>Style<select disabled={!nextScene} value={activeScene.transitionToNext.type} onChange={(event) => onSetTransition(activeScene.id, event.target.value as SceneTransitionType, activeScene.transitionToNext.durationInFrames)}><option value="cut">Cut</option><option value="crossfade">Crossfade</option><option value="fade-black">Fade through black</option><option value="slide">Slide</option><option value="zoom">Zoom</option><option value="blur">Blur dissolve</option></select></label><label>Duration (frames)<input type="number" min="1" max="90" disabled={!nextScene || activeScene.transitionToNext.type === "cut"} value={activeScene.transitionToNext.durationInFrames} onChange={(event) => onSetTransition(activeScene.id, activeScene.transitionToNext.type, Number(event.target.value))} /></label></section>
-            <section><h3>Actions</h3><div className="inspectorActions"><button onClick={onDuplicateScene}><I.Copy /> Duplicate</button><button disabled={scenes.length === 1} onClick={onDeleteScene}><I.Trash2 /> Delete</button></div></section>
+            <section><h3>Actions</h3><div className="inspectorActions"><button onClick={onDuplicateScene}><I.Copy /> Duplicate</button><button onClick={onDeleteScene}><I.Trash2 /> Delete</button></div></section>
           </div>}
         </aside>
       </section>
@@ -1540,7 +1541,7 @@ function VideoEditorWorkspace({
             })}
           </div>
         </div>
-        <MasterAssetTimelineRow track={videoTimelineTrack} totalFrames={totalFrames} zoom={masterZoom} playhead={shownMasterFrame} selectedClipIds={selectedTimelineIds} dragActive={dragTargetTrack === videoTimelineTrack.id} onDragEnter={() => setDragTargetTrack(videoTimelineTrack.id)} onDragLeave={() => setDragTargetTrack(undefined)} onDrop={(event) => void dropLibraryAsset(event, "video")} onSelect={(id, additive) => { selectTimelineClip(`asset:${id}`, additive); setSelectedAssetClipId(id); setSelectedAudio(undefined); setSelectedOverlayId(undefined); }} onChange={updateTimelineAssetClip} onDelete={(id) => { deleteTimelineAssetClip(id, rippleDelete); setSelectedTimelineIds((items) => items.filter((item) => item !== `asset:${id}`)); if (id === selectedAssetClipId) setSelectedAssetClipId(undefined); }} />
+        <MasterAssetTimelineRow track={masterVideoTrack} totalFrames={totalFrames} zoom={masterZoom} playhead={shownMasterFrame} selectedClipIds={selectedTimelineIds} activeSceneId={activeScene.id} dragActive={dragTargetTrack === videoTimelineTrack.id} onDragEnter={() => setDragTargetTrack(videoTimelineTrack.id)} onDragLeave={() => setDragTargetTrack(undefined)} onDrop={(event) => { if (event.dataTransfer.getData("application/x-renderlaunch-template")) dropSceneTemplate(event); else void dropLibraryAsset(event, "video"); }} onSceneSelect={(sceneId) => { setSelectedTimelineIds([]); setSelectedAssetClipId(undefined); setSelectedAudio(undefined); setSelectedOverlayId(undefined); onSelectScene(sceneId); }} onSelect={(id, additive) => { selectTimelineClip(`asset:${id}`, additive); setSelectedAssetClipId(id); setSelectedAudio(undefined); setSelectedOverlayId(undefined); }} onChange={updateTimelineAssetClip} onDelete={(id) => { deleteTimelineAssetClip(id, rippleDelete); setSelectedTimelineIds((items) => items.filter((item) => item !== `asset:${id}`)); if (id === selectedAssetClipId) setSelectedAssetClipId(undefined); }} />
         <MasterAssetTimelineRow track={imageTimelineTrack} totalFrames={totalFrames} zoom={masterZoom} playhead={shownMasterFrame} selectedClipIds={selectedTimelineIds} dragActive={dragTargetTrack === imageTimelineTrack.id} onDragEnter={() => setDragTargetTrack(imageTimelineTrack.id)} onDragLeave={() => setDragTargetTrack(undefined)} onDrop={(event) => void dropLibraryAsset(event, "image")} onSelect={(id, additive) => { selectTimelineClip(`asset:${id}`, additive); setSelectedAssetClipId(id); setSelectedAudio(undefined); setSelectedOverlayId(undefined); }} onChange={updateTimelineAssetClip} onDelete={(id) => { deleteTimelineAssetClip(id, rippleDelete); setSelectedTimelineIds((items) => items.filter((item) => item !== `asset:${id}`)); if (id === selectedAssetClipId) setSelectedAssetClipId(undefined); }} />
         <div className="audioTimeline">
           {videoProject.audioTracks.map((track) => (
@@ -1635,6 +1636,17 @@ function VideoEditorWorkspace({
   );
 }
 
+function VideoEditorWorkspace(props: Parameters<typeof PopulatedVideoEditorWorkspace>[0]) {
+  if (props.videoProject.scenes.length) return <PopulatedVideoEditorWorkspace {...props} />;
+  return <main className="emptyMasterWorkspace">
+    <header className="videoEditorHeader"><div className="videoProjectIdentity"><I.Clapperboard /><div><b>{props.videoProject.name}</b><small>Empty launch video</small></div></div><div className="actions"><button onClick={props.onOpenLibrary}><I.FolderOpen /> Template library</button><button className="primary" onClick={props.onSave}><I.Save /> Save project</button></div></header>
+    <section className="emptyMasterBody">
+      <div className="emptyMasterHero"><span><I.Sparkles /></span><small>START YOUR LAUNCH VIDEO</small><h1>Choose a template to begin.</h1><p>Templates become editable clips directly on the Video layer. There is no separate scene lane in the master editor.</p><div><button className="primary" onClick={props.onOpenLibrary}><I.LayoutTemplate /> Browse templates</button><button onClick={props.onAddScene}><I.Plus /> Blank composition</button></div></div>
+    </section>
+    <section className="emptyMasterTimeline"><div><b>Master Timeline</b><small>Templates and footage appear on the Video layer</small></div><div className="emptyTrack"><span><I.Film /> Video</span><button onClick={props.onOpenLibrary}><I.Plus /> Add template</button></div><div className="emptyTrack muted"><span><I.Image /> Images & graphics</span></div><div className="emptyTrack muted"><span><I.AudioLines /> Audio</span></div></section>
+  </main>;
+}
+
 function assetMediaKind(asset: Pick<StoredAsset, "type" | "name">): "image" | "video" | "audio" | "model" | "other" {
   if (asset.name.toLowerCase().endsWith(".glb") || asset.type.includes("gltf")) return "model";
   if (asset.type.startsWith("image/")) return "image";
@@ -1643,10 +1655,12 @@ function assetMediaKind(asset: Pick<StoredAsset, "type" | "name">): "image" | "v
   return "other";
 }
 
-function MasterAssetTimelineRow({ track, totalFrames, zoom, playhead, selectedClipIds, dragActive, onDragEnter, onDragLeave, onDrop, onSelect, onChange, onDelete }: { track: TimelineTrack; totalFrames: number; zoom: number; playhead: number; selectedClipIds: string[]; dragActive: boolean; onDragEnter: () => void; onDragLeave: () => void; onDrop: (event: React.DragEvent<HTMLElement>) => void; onSelect: (clipId: string, additive: boolean) => void; onChange: (clipId: string, patch: { startFrame?: number; sourceStartFrame?: number; durationInFrames?: number }) => void; onDelete: (clipId: string) => void }) {
+function MasterAssetTimelineRow({ track, totalFrames, zoom, playhead, selectedClipIds, activeSceneId, dragActive, onDragEnter, onDragLeave, onDrop, onSceneSelect, onSelect, onChange, onDelete }: { track: TimelineTrack; totalFrames: number; zoom: number; playhead: number; selectedClipIds: string[]; activeSceneId?: string; dragActive: boolean; onDragEnter: () => void; onDragLeave: () => void; onDrop: (event: React.DragEvent<HTMLElement>) => void; onSceneSelect?: (sceneId: string) => void; onSelect: (clipId: string, additive: boolean) => void; onChange: (clipId: string, patch: { startFrame?: number; sourceStartFrame?: number; durationInFrames?: number }) => void; onDelete: (clipId: string) => void }) {
   const Icon = track.type === "video" ? I.Film : I.Image;
   const beginEdit = (event: React.PointerEvent<HTMLDivElement | HTMLButtonElement>, clip: TimelineTrack["clips"][number], mode: "move" | "left" | "right") => {
-    event.preventDefault(); event.stopPropagation(); onSelect(clip.id, event.ctrlKey || event.metaKey);
+    event.preventDefault(); event.stopPropagation();
+    if (clip.referenceType === "scene") { onSceneSelect?.(clip.referenceId); return; }
+    onSelect(clip.id, event.ctrlKey || event.metaKey);
     const target = event.currentTarget, lane = target.closest<HTMLElement>(".masterAssetTrackContent")!, width = lane.getBoundingClientRect().width,
       originX = event.clientX, originStart = clip.startFrame, originSource = clip.sourceStartFrame, originDuration = clip.durationInFrames;
     let preview = { startFrame: originStart, sourceStartFrame: originSource, durationInFrames: originDuration };
@@ -1663,10 +1677,10 @@ function MasterAssetTimelineRow({ track, totalFrames, zoom, playhead, selectedCl
     const end = () => { target.removeEventListener("pointermove", move as EventListener); target.removeEventListener("pointerup", end); target.removeEventListener("pointercancel", end); onChange(clip.id, preview); };
     target.addEventListener("pointermove", move as EventListener); target.addEventListener("pointerup", end); target.addEventListener("pointercancel", end);
   };
-  return <div className={`masterAssetTrack timelineDropZone ${dragActive ? "compatibleDrop" : ""}`} onDragOver={(event) => { if (event.dataTransfer.types.includes("application/x-renderlaunch-asset")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; onDragEnter(); } }} onDragLeave={onDragLeave} onDrop={onDrop}>
+  return <div className={`masterAssetTrack timelineDropZone ${dragActive ? "compatibleDrop" : ""}`} onDragOver={(event) => { if (event.dataTransfer.types.includes("application/x-renderlaunch-asset") || event.dataTransfer.types.includes("application/x-renderlaunch-template")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; onDragEnter(); } }} onDragLeave={onDragLeave} onDrop={onDrop}>
     <div className="masterAssetTrackLabel"><Icon /><b>{track.name}</b><I.Eye /></div>
     <div className="masterAssetTrackLane"><div className="masterAssetTrackContent dropTimelineContent" style={{ width: `${zoom * 100}%` }}>
-      {track.clips.map((clip) => <div key={`editable:${clip.id}`} data-timeline-clip-id={`asset:${clip.id}`} className={`masterAssetClip ${clip.type} ${selectedClipIds.includes(`asset:${clip.id}`) ? "selected" : ""}`} style={{ left: `${(clip.startFrame / totalFrames) * 100}%`, width: `${(clip.durationInFrames / totalFrames) * 100}%` }} title={`${clip.name} · ${clip.durationInFrames} frames`} onPointerDown={(event) => beginEdit(event, clip, "move")}>
+      {track.clips.map((clip) => <div key={`editable:${clip.id}`} data-timeline-clip-id={clip.referenceType === "asset" ? `asset:${clip.id}` : undefined} className={`masterAssetClip ${clip.type} ${selectedClipIds.includes(`asset:${clip.id}`) || (clip.referenceType === "scene" && clip.referenceId === activeSceneId) ? "selected" : ""}`} style={{ left: `${(clip.startFrame / totalFrames) * 100}%`, width: `${(clip.durationInFrames / totalFrames) * 100}%` }} title={`${clip.name} · ${clip.durationInFrames} frames`} onPointerDown={(event) => beginEdit(event, clip, "move")}>
         {clip.referenceType === "asset" && <button className="masterAssetTrim left" aria-label="Trim clip start" onPointerDown={(event) => beginEdit(event, clip, "left")} />}
         <Icon /><b>{clip.name}</b>
         {clip.referenceType === "asset" && <><button className="masterAssetDelete" title="Remove clip" onPointerDown={(event) => event.stopPropagation()} onClick={() => onDelete(clip.id)}><I.X /></button><button className="masterAssetTrim right" aria-label="Trim clip end" onPointerDown={(event) => beginEdit(event, clip, "right")} /></>}

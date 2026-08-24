@@ -127,6 +127,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     try {
       const restored = await loadRecentProject();
       const videoProject = restored ?? get().videoProject;
+      if (!videoProject.scenes.length) { set({ videoProject, masterFrame: 0, currentFrame: 0, playing: false, hydrated: true, saveStatus: "saved" }); return; }
       const resolved = resolveMasterFrame(videoProject, get().masterFrame);
       set({
         videoProject,
@@ -173,6 +174,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     })),
   setMasterFrame: (frame) =>
     set((state) => {
+      if (!state.videoProject.scenes.length) return { masterFrame: 0, currentFrame: 0, playing: false };
       const resolved = resolveMasterFrame(state.videoProject, frame),
         videoProject =
           resolved.scene.id === state.videoProject.activeSceneId
@@ -193,6 +195,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }),
   advanceFrame: () =>
     set((state) => {
+      if (!state.videoProject.scenes.length) return { masterFrame: 0, currentFrame: 0, playing: false };
       if (state.playbackScope === "master") {
         const current = resolveMasterFrame(
             state.videoProject,
@@ -237,6 +240,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setPlaying: (playing) =>
     set((state) => {
       if (!playing) return { playing: false };
+      if (!state.videoProject.scenes.length) return { playing: false, masterFrame: 0, currentFrame: 0 };
       if (state.playbackScope === "master") {
         const current = resolveMasterFrame(
           state.videoProject,
@@ -353,7 +357,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }),
   deleteScene: (sceneId) =>
     set((state) => {
-      if (state.videoProject.scenes.length <= 1) return state;
       const index = state.videoProject.scenes.findIndex(
         (scene) => scene.id === sceneId,
       );
@@ -362,7 +365,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         videoProject = produce(state.videoProject, (draft) => {
           draft.scenes.splice(index, 1);
           normalizeSceneOrder(draft.scenes);
-          if (draft.activeSceneId === sceneId)
+          if (!draft.scenes.length) draft.activeSceneId = "";
+          else if (draft.activeSceneId === sceneId)
             draft.activeSceneId =
               draft.scenes[Math.min(index, draft.scenes.length - 1)].id;
           draft.updatedAt = now;
@@ -371,7 +375,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         past: [...state.past.slice(-49), state.videoProject],
         future: [],
         videoProject,
-        project: activeComposition(videoProject),
+        project: videoProject.scenes.length ? activeComposition(videoProject) : state.project,
         masterFrame: sceneMasterStart(videoProject, videoProject.activeSceneId),
         currentFrame: 0,
         playing: false,
@@ -652,12 +656,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
     }),
   openVideoProject: (videoProject) => {
+    if (!videoProject.scenes.length) { set({ videoProject, masterFrame: 0, currentFrame: 0, playing: false, past: [], future: [], saveStatus: "saved" }); return; }
     const resolved = resolveMasterFrame(videoProject, 0);
     set({ videoProject, project: resolved.scene.composition, currentFrame: resolved.localFrame, masterFrame: 0, playing: false, selectedLayerId: "phone", past: [], future: [], saveStatus: "saved" });
   },
   createVideoProject: () => {
-    const videoProject = createDefaultVideoProject(), resolved = resolveMasterFrame(videoProject, 0);
-    set({ videoProject, project: resolved.scene.composition, currentFrame: 0, masterFrame: 0, playing: false, selectedLayerId: "phone", past: [], future: [], saveStatus: "unsaved" });
+    const videoProject = produce(createDefaultVideoProject(), (draft) => { draft.scenes = []; draft.activeSceneId = ""; draft.timelineTracks = buildUnifiedTimelineTracks([], draft.audioTracks, [], draft.timelineTracks); });
+    set({ videoProject, currentFrame: 0, masterFrame: 0, playing: false, selectedLayerId: "phone", past: [], future: [], saveStatus: "unsaved" });
   },
   addSceneFromTemplate: (composition) =>
     set((state) => {
@@ -719,7 +724,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (!previous) return state;
       return {
         videoProject: previous,
-        project: activeComposition(previous),
+        project: previous.scenes.length ? activeComposition(previous) : state.project,
         past: state.past.slice(0, -1),
         future: [state.videoProject, ...state.future],
         saveStatus: "unsaved",
@@ -731,7 +736,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (!next) return state;
       return {
         videoProject: next,
-        project: activeComposition(next),
+        project: next.scenes.length ? activeComposition(next) : state.project,
         past: [...state.past, state.videoProject],
         future: state.future.slice(1),
         saveStatus: "unsaved",
