@@ -1245,6 +1245,7 @@ function PopulatedVideoEditorWorkspace({
   const addAudioClip = useEditorStore((state) => state.addAudioClip),
     updateAudioClip = useEditorStore((state) => state.updateAudioClip),
     deleteAudioClip = useEditorStore((state) => state.deleteAudioClip),
+    moveAudioClip = useEditorStore((state) => state.moveAudioClip),
     setAudioTrackMuted = useEditorStore((state) => state.setAudioTrackMuted),
     setAudioTrackVolume = useEditorStore((state) => state.setAudioTrackVolume);
   const addGlobalOverlay = useEditorStore((state) => state.addGlobalOverlay),
@@ -3688,6 +3689,7 @@ function VideoEditorWorkspace(
     addAudioClip = useEditorStore((state) => state.addAudioClip),
     updateAudioClip = useEditorStore((state) => state.updateAudioClip),
     deleteAudioClip = useEditorStore((state) => state.deleteAudioClip),
+    moveAudioClip = useEditorStore((state) => state.moveAudioClip),
     updateTimelineAssetClip = useEditorStore(
       (state) => state.updateTimelineAssetClip,
     ),
@@ -4363,6 +4365,9 @@ function VideoEditorWorkspace(
               </span>
               <div
                 className={`simpleTrackLane ${dropTarget === track.id ? "compatibleDrop" : ""} ${dropTarget === `invalid:${track.id}` ? "invalidDrop" : ""}`}
+                data-track-id={track.id}
+                data-track-type={track.type}
+                data-track-locked={track.locked ? "true" : "false"}
                 onDragOver={(event) => {
                   const hasTemplate = event.dataTransfer.types.includes(
                       "application/x-renderlaunch-template",
@@ -4401,6 +4406,7 @@ function VideoEditorWorkspace(
                       width: `${(clip.durationInFrames / totalFrames) * 100}%`,
                     }}
                     onPointerDown={(event) => {
+                      event.preventDefault();
                       event.stopPropagation();
                       setSelectedMasterClipId(clip.id);
                       if (
@@ -4411,9 +4417,11 @@ function VideoEditorWorkspace(
                       const target = event.currentTarget,
                         lane = target.parentElement!,
                         originX = event.clientX,
-                        originStart = clip.startFrame;
+                        originStart = clip.startFrame,
+                        originLaneTop = lane.getBoundingClientRect().top;
+                      target.style.zIndex = "20";
                       let nextStart = originStart;
-                      target.setPointerCapture(event.pointerId);
+                      let targetTrackId = track.id;
                       const move = (pointerEvent: globalThis.PointerEvent) => {
                         nextStart = Math.max(
                           0,
@@ -4425,23 +4433,68 @@ function VideoEditorWorkspace(
                           ),
                         );
                         target.style.left = `${(nextStart / totalFrames) * 100}%`;
+                        if (clip.referenceType === "audio-clip") {
+                          const lanes = Array.from(
+                              document.querySelectorAll<HTMLElement>(
+                                ".simpleTrackLane[data-track-id]",
+                              ),
+                            ),
+                            targetLane = lanes.find((item) => {
+                              const bounds = item.getBoundingClientRect();
+                              return (
+                                pointerEvent.clientY >= bounds.top &&
+                                pointerEvent.clientY <= bounds.bottom
+                              );
+                            }),
+                            candidateId = targetLane?.dataset.trackId,
+                            compatible =
+                              targetLane?.dataset.trackType === "audio" &&
+                              targetLane?.dataset.trackLocked !== "true";
+                          if (candidateId) {
+                            targetTrackId = compatible ? candidateId : track.id;
+                            setDropTarget(
+                              compatible
+                                ? candidateId
+                                : `invalid:${candidateId}`,
+                            );
+                            const targetTop = compatible
+                              ? targetLane.getBoundingClientRect().top
+                              : originLaneTop;
+                            target.style.transform = `translateY(${targetTop - originLaneTop}px)`;
+                          }
+                        }
                       };
                       const end = () => {
-                        target.removeEventListener("pointermove", move);
-                        target.removeEventListener("pointerup", end);
+                        window.removeEventListener("pointermove", move);
+                        window.removeEventListener("pointerup", end);
+                        window.removeEventListener("pointercancel", end);
+                        target.style.transform = "";
+                        target.style.zIndex = "";
                         if (clip.referenceType === "asset")
                           updateTimelineAssetClip(clip.id, {
                             startFrame: nextStart,
                           });
-                        else if (track.id.startsWith("master-audio:"))
-                          updateAudioClip(
-                            track.id.slice("master-audio:".length),
+                        else if (track.id.startsWith("master-audio:")) {
+                          const sourceId = track.id.slice(
+                              "master-audio:".length,
+                            ),
+                            targetId = targetTrackId.startsWith("master-audio:")
+                              ? targetTrackId.slice("master-audio:".length)
+                              : sourceId;
+                          moveAudioClip(
                             clip.referenceId,
-                            { startFrame: nextStart },
+                            sourceId,
+                            targetId,
+                            nextStart,
                           );
+                        }
+                        setDropTarget(undefined);
                       };
-                      target.addEventListener("pointermove", move);
-                      target.addEventListener("pointerup", end);
+                      window.addEventListener("pointermove", move);
+                      window.addEventListener("pointerup", end, { once: true });
+                      window.addEventListener("pointercancel", end, {
+                        once: true,
+                      });
                     }}
                     onDoubleClick={() =>
                       clip.referenceType === "scene" &&

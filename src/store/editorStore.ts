@@ -79,6 +79,7 @@ type EditorState = {
   addAudioClip: (trackId: string, clip: AudioClip) => void;
   updateAudioClip: (trackId: string, clipId: string, patch: Partial<AudioClip>) => void;
   deleteAudioClip: (trackId: string, clipId: string) => void;
+  moveAudioClip: (clipId: string, sourceTrackId: string, targetTrackId: string, startFrame: number) => void;
   setAudioTrackMuted: (trackId: string, muted: boolean) => void;
   setAudioTrackVolume: (trackId: string, volume: number) => void;
   addGlobalOverlay: (type: GlobalOverlayType, startFrame: number) => void;
@@ -622,6 +623,26 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const videoProject = produce(state.videoProject, (draft) => {
         const track = draft.audioTracks.find((item) => item.id === trackId);
         if (track) track.clips = track.clips.filter((clip) => clip.id !== clipId);
+        draft.updatedAt = new Date().toISOString();
+      });
+      return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+    }),
+  moveAudioClip: (clipId, sourceTrackId, targetTrackId, startFrame) =>
+    set((state) => {
+      if (sourceTrackId === targetTrackId) {
+        const videoProject = produce(state.videoProject, (draft) => {
+          const clip = draft.audioTracks.find((track) => track.id === sourceTrackId)?.clips.find((item) => item.id === clipId);
+          if (clip) clip.startFrame = Math.max(0, Math.round(startFrame));
+          draft.updatedAt = new Date().toISOString();
+        });
+        return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
+      }
+      const source = state.videoProject.audioTracks.find((track) => track.id === sourceTrackId), target = state.videoProject.audioTracks.find((track) => track.id === targetTrackId), clip = source?.clips.find((item) => item.id === clipId);
+      if (!source || !target || !clip) return state;
+      const videoProject = produce(state.videoProject, (draft) => {
+        const from = draft.audioTracks.find((track) => track.id === sourceTrackId)!, to = draft.audioTracks.find((track) => track.id === targetTrackId)!;
+        from.clips = from.clips.filter((item) => item.id !== clipId);
+        to.clips.push({ ...clip, startFrame: Math.max(0, Math.round(startFrame)) });
         draft.updatedAt = new Date().toISOString();
       });
       return { past: [...state.past.slice(-49), state.videoProject], future: [], videoProject, saveStatus: "unsaved" };
